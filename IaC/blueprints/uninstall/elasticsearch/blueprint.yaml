@@ -1,0 +1,13 @@
+id: uninstall-elasticsearch
+name: Uninstall — Elasticsearch (Docker cluster)
+templateId: uninstall-stack
+description: >-
+  Stop elasticsearch-docker.service on every node, remove the Elasticsearch
+  container and image, delete /var/lib/elasticsearch-data and the per-node
+  health dashboard unit.
+defaults:
+  stack: elasticsearch
+  purge_data: true
+  remove_packages: true
+  flush_iptables: false
+  reboot_after: false

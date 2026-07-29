@@ -1,0 +1,12 @@
+id: uninstall-redis
+name: Uninstall — Redis + Sentinel
+templateId: uninstall-stack
+description: >-
+  Stop redis-server and redis-sentinel, purge packages, remove /etc/redis,
+  /var/lib/redis, /var/log/redis and the redis system user.
+defaults:
+  stack: redis
+  purge_data: true
+  remove_packages: true
+  flush_iptables: false
+  reboot_after: false

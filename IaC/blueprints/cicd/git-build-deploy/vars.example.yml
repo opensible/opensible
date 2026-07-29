@@ -1,0 +1,24 @@
+# Example variable overrides for the CI/CD blueprint.
+git_repo_url: https://github.com/acme/hello-app.git
+git_ref: main
+
+dockerfile_path: Dockerfile
+build_context: .
+platforms: linux/amd64
+
+registry_url: harbor.example.com
+registry_type: harbor
+registry_username: robot$builder
+registry_password: "{{ harbor_token }}"     # from vault
+image_repository: acme/hello-app
+image_tag: latest
+also_tag_git_sha: true
+
+deploy_enabled: true
+deploy_target_host: app-01
+deploy_mode: docker-run
+container_name: hello-app
+container_ports: |
+  8080:8080
+container_env: |
+  APP_ENV=prod

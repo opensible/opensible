@@ -1,0 +1,56 @@
+---
+# Example variable overrides for the kibana-cluster blueprint.
+# Copy into your project and adjust before running the playbook.
+
+cluster_id: opensible-kibana
+kibana_version: "8.15.3"
+
+# Networking
+http_port: 5601
+# Optional public URL (used for generated links / reports).
+server_publicBaseUrl: ""
+
+# Per-node HTTP health dashboard (HTML + /health.json + /live).
+health_http_enabled: true
+health_http_port: 5680
+
+# Upstream Elasticsearch cluster. Full URLs of every ES node — Kibana
+# load-balances across them and follows failovers automatically.
+elasticsearch_hosts:
+  - "http://10.0.0.11:9200"
+  - "http://10.0.0.12:9200"
+  - "http://10.0.0.13:9200"
+
+# When Elasticsearch runs with xpack.security.enabled=true, provide the
+# credentials Kibana should use. `kibana_system` is the built-in user
+# meant for this; store the password in an ansible-vault file.
+security_enabled: false
+elasticsearch_username: kibana_system
+elasticsearch_password: ""
+elasticsearch_ssl_verificationMode: full  # full | certificate | none
+
+# Recommended for small self-hosted clusters. These values prevent the Kibana UI
+# from timing out during saved-object migrations, Spaces navigation, and startup
+# background tasks when Elasticsearch is healthy but slow under load.
+elasticsearch_requestTimeout: 300000
+elasticsearch_pingTimeout: 60000
+elasticsearch_shardTimeout: 120000
+elasticsearch_sniffOnStart: false
+kibana_lightweight_mode: true
+task_manager_maxWorkers: 5
+# Task Manager poll interval in milliseconds. Kibana 8.15 requires a number.
+task_manager_pollInterval: 10000
+
+# Optional 32+ char key. In HA you MUST use the SAME key on every node
+# so saved-object decryption works regardless of which Kibana serves the
+# request. Leave blank only for a single-node lab.
+encryption_key: ""
+
+# Kibana nodes. Add 2+ and place a load balancer / reverse proxy in
+# front (HAProxy, Nginx, Traefik, cloud LB) for real HA.
+nodes:
+  - { name: kibana-1, ip: 10.0.0.21, ssh_user: root, ssh_port: 22 }
+  - { name: kibana-2, ip: 10.0.0.22, ssh_user: root, ssh_port: 22 }
+
+open_firewall: true
+become: true

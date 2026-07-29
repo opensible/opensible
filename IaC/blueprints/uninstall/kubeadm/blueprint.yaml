@@ -1,0 +1,12 @@
+id: uninstall-kubeadm
+name: Uninstall — Kubernetes (kubeadm)
+templateId: uninstall-stack
+description: >-
+  Run kubeadm reset, remove /etc/kubernetes, CNI, kubeconfigs, flush
+  iptables/ipvs and purge kubelet/kubeadm/kubectl packages.
+defaults:
+  stack: kubeadm
+  purge_data: true
+  remove_packages: true
+  flush_iptables: true
+  reboot_after: false

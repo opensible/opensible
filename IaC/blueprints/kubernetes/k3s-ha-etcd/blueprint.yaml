@@ -1,0 +1,19 @@
+id: k3s-ha-etcd
+name: k3s HA (embedded etcd)
+group: kubernetes
+category: Kubernetes
+description: Lightweight k3s cluster with embedded etcd and optional Longhorn storage.
+logo: https://cdn.simpleicons.org/k3s/FFC61C
+tags: [k3s, edge, longhorn]
+author: opensible
+stars: 96
+source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/kubernetes/k3s-ha-etcd
+requires:
+  ansible: ">=2.14"
+entrypoint: playbook.yml
+variables:
+  cluster_name: opensible-k3s
+  ha_mode: false
+  k3s_version: v1.30.4+k3s1
+  disable_traefik: true
+  install_longhorn: false

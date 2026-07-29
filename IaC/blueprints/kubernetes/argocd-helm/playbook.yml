@@ -1,0 +1,86 @@
+---
+# Rendered from template: Argo CD via Helm
+- name: Install Argo CD via Helm
+  hosts: all
+  become: true
+  gather_facts: false
+  vars:
+    release: "{{ release | default('argocd') }}"
+    namespace: "{{ namespace | default('argocd') }}"
+    chart: "{{ chart | default('argo/argo-cd') }}"
+    repo_name: "{{ repo_name | default('argo') }}"
+    repo_url: "{{ repo_url | default('https://argoproj.github.io/argo-helm') }}"
+    chart_version: "{{ chart_version | default('') }}"
+    kubeconfig: "{{ kubeconfig | default('/etc/rancher/k3s/k3s.yaml') }}"
+    kube_context: "{{ kube_context | default('') }}"
+    create_namespace: "{{ create_namespace | default(true) }}"
+    wait_for_ready: "{{ wait | default(true) }}"
+    values_content: "{{ values | default('') }}"
+  tasks:
+    - name: Ensure helm is present
+      ansible.builtin.command: helm version --short
+      register: helm_check
+      changed_when: false
+      failed_when: helm_check.rc != 0
+
+    - name: Add Argo Helm repo
+      ansible.builtin.command: "helm repo add {{ repo_name }} {{ repo_url }}"
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: repo_add
+      changed_when: "'has been added' in repo_add.stdout"
+      failed_when: repo_add.rc != 0 and 'already exists' not in repo_add.stderr
+
+    - name: Refresh Helm repos
+      ansible.builtin.command: helm repo update
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      changed_when: false
+
+    - name: Write inline values.yaml (if provided)
+      ansible.builtin.copy:
+        dest: "/tmp/opensible-{{ release }}-values.yaml"
+        mode: "0600"
+        content: "{{ values_content }}"
+      when: values_content | length > 0
+
+    - name: helm upgrade --install {{ release }}
+      ansible.builtin.shell: |
+        set -e
+        VALS=""
+        if [ -s "/tmp/opensible-{{ release }}-values.yaml" ]; then
+          VALS="-f /tmp/opensible-{{ release }}-values.yaml"
+        fi
+        VER=""
+        if [ -n "{{ chart_version }}" ]; then
+          VER="--version {{ chart_version }}"
+        fi
+        CTX=""
+        if [ -n "{{ kube_context }}" ]; then
+          CTX="--kube-context {{ kube_context }}"
+        fi
+        CN=""
+        if [ "{{ create_namespace | bool }}" = "True" ]; then
+          CN="--create-namespace"
+        fi
+        WAIT=""
+        if [ "{{ wait_for_ready | bool }}" = "True" ]; then
+          WAIT="--wait --timeout 15m"
+        fi
+        helm upgrade --install {{ release }} {{ chart }} \
+          -n {{ namespace }} $CN $VER $VALS $WAIT $CTX
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      args:
+        executable: /bin/bash
+
+    - name: Show Argo CD pods
+      ansible.builtin.command: "kubectl -n {{ namespace }} get pods"
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: argocd_pods
+      changed_when: false
+
+    - name: Print pod status
+      ansible.builtin.debug:
+        var: argocd_pods.stdout_lines

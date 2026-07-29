@@ -1,0 +1,16 @@
+# Example variables — copy to vars.yml and edit
+flavor: redis
+cluster_id: opensible-redis
+primary_name: mymaster
+port: 6379
+sentinel_port: 26379
+quorum: 2
+down_after_ms: 5000
+failover_timeout_ms: 10000
+parallel_syncs: 1
+maxmemory_policy: noeviction
+appendonly: true
+bind: 0.0.0.0
+# requirepass: "change-me-strong-password"
+open_firewall: true
+become: true

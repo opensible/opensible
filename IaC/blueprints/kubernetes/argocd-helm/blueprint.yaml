@@ -1,0 +1,24 @@
+id: helm-argocd
+name: Argo CD via Helm
+group: kubernetes
+category: Kubernetes
+description: Install Argo CD on an existing cluster using the official Helm chart.
+logo: https://cdn.simpleicons.org/argo/EF7B4D
+tags: [gitops, argocd, helm]
+author: opensible
+stars: 71
+source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/kubernetes/argocd-helm
+requires:
+  ansible: ">=2.14"
+  helm: ">=3.12"
+entrypoint: playbook.yml
+variables:
+  release: argocd
+  namespace: argocd
+  chart: argo/argo-cd
+  repo_name: argo
+  repo_url: https://argoproj.github.io/argo-helm
+  chart_version: ""
+  kubeconfig: /etc/rancher/k3s/k3s.yaml
+  create_namespace: true
+  wait: true

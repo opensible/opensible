@@ -1,0 +1,12 @@
+id: uninstall-openbao
+name: Uninstall — OpenBao (systemd)
+templateId: uninstall-stack
+description: >-
+  Stop openbao.service, purge the OpenBao apt/dnf repo and package, remove
+  /etc/openbao, /opt/openbao, /var/lib/openbao and the openbao system user.
+defaults:
+  stack: openbao
+  purge_data: true
+  remove_packages: true
+  flush_iptables: false
+  reboot_after: false

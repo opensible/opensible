@@ -1,0 +1,17 @@
+# Example variables — copy to vars.yml and edit
+kafka_version: "3.8.1"
+kafka_scala_version: "2.13"
+cluster_id: opensible-kafka
+client_port: 9092
+controller_port: 9093
+replication_factor: 3
+min_insync_replicas: 2
+num_partitions: 6
+auto_create_topics: false
+log_retention_hours: 168
+heap_opts: "-Xms1G -Xmx1G"
+install_dir: /opt/kafka
+data_dir: /var/lib/kafka/data
+log_dir: /var/log/kafka
+open_firewall: true
+become: true

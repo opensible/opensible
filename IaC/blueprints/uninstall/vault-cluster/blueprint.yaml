@@ -1,0 +1,14 @@
+id: uninstall-vault-cluster
+name: Uninstall — HashiCorp Vault (Docker cluster)
+templateId: uninstall-stack
+description: >-
+  Stop vault-docker.service and the vault-autounseal service/timer on every
+  node, remove the Vault container and image, and purge /etc/vault,
+  /opt/vault and the Raft data directory (/var/lib/vault-data).
+defaults:
+  stack: vault-cluster
+  purge_data: true
+  remove_packages: true
+  flush_iptables: false
+  reboot_after: false
+  become: true

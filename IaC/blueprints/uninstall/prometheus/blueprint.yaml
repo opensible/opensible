@@ -1,0 +1,13 @@
+id: uninstall-prometheus
+name: Uninstall — Prometheus (systemd)
+templateId: uninstall-stack
+description: >-
+  Stop prometheus.service, remove /usr/local/bin/{prometheus,promtool},
+  /etc/prometheus, /srv/metrics and the prometheus system user.
+defaults:
+  stack: prometheus
+  purge_data: true
+  remove_packages: false
+  flush_iptables: false
+  reboot_after: false
+  become: true

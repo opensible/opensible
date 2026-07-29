@@ -1,0 +1,12 @@
+id: uninstall-k3s
+name: Uninstall — k3s Cluster
+templateId: uninstall-stack
+description: >-
+  Run the official k3s-uninstall.sh / k3s-agent-uninstall.sh, remove
+  /var/lib/rancher, /etc/rancher, Longhorn data and kubeconfigs.
+defaults:
+  stack: k3s
+  purge_data: true
+  remove_packages: false
+  flush_iptables: true
+  reboot_after: false

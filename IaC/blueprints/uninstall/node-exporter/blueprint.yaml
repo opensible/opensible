@@ -1,0 +1,13 @@
+id: uninstall-node-exporter
+name: Uninstall — Prometheus node_exporter
+templateId: uninstall-stack
+description: >-
+  Stop prometheus-node-exporter, remove the systemd drop-in and purge
+  the distro package.
+defaults:
+  stack: node-exporter
+  purge_data: true
+  remove_packages: true
+  flush_iptables: false
+  reboot_after: false
+  become: true

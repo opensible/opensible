@@ -1,0 +1,12 @@
+id: uninstall-kafka
+name: Uninstall — Kafka (KRaft)
+templateId: uninstall-stack
+description: >-
+  Stop kafka.service, remove /opt/kafka, wipe /var/lib/kafka data + logs,
+  drop the kafka system user and unit file.
+defaults:
+  stack: kafka
+  purge_data: true
+  remove_packages: false
+  flush_iptables: false
+  reboot_after: false

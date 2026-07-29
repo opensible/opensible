@@ -1,0 +1,33 @@
+id: valkey-sentinel
+name: Valkey + Sentinel
+group: databases
+category: Cache & KV
+description: >-
+  Valkey (open-source Redis fork) primary/replica cluster with Sentinel
+  for automatic failover. Installed from distro packages and managed by
+  systemd — no Docker, no Bitnami. The first node is the initial primary;
+  the rest are replicas. Every node also runs a Sentinel that monitors
+  the primary and coordinates failover.
+logo: https://raw.githubusercontent.com/valkey-io/valkey/unstable/BRANDING/valkey-logomark.svg
+tags: [valkey, sentinel, ha, systemd, failover]
+author: opensible
+stars: 21
+source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/databases/valkey-sentinel
+requires:
+  ansible: ">=2.14"
+entrypoint: playbook.yml
+variables:
+  flavor: valkey
+  cluster_id: opensible-valkey
+  primary_name: mymaster
+  port: 6379
+  sentinel_port: 26379
+  quorum: 2
+  down_after_ms: 5000
+  failover_timeout_ms: 10000
+  parallel_syncs: 1
+  maxmemory_policy: noeviction
+  appendonly: true
+  bind: 0.0.0.0
+  open_firewall: true
+  become: true

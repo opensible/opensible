@@ -1,0 +1,22 @@
+id: openbao
+name: OpenBao Cluster (Raft HA)
+templateId: openbao-systemd
+description: >-
+  HashiCorp Vault-compatible OpenBao on systemd. Installs from pinned official
+  release assets without GitHub API calls, renders /etc/openbao/openbao.hcl
+  with integrated Raft storage and cross-node retry_join for HA. Optional
+  auto-init + unseal on first run.
+defaults:
+  version: "2.6.0"
+  listen_address: "0.0.0.0:8200"
+  storage_backend: raft
+  data_dir: /opt/openbao/data
+  tls_disable: true
+  ui: true
+  disable_mlock: true
+  log_level: info
+  auto_init: true
+  health_http_enabled: true
+  health_http_port: 8280
+  become: true
+

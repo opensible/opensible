@@ -1,0 +1,26 @@
+---
+cluster_name: opensible
+ha_mode: false
+# Set to your load-balancer VIP or DNS when ha_mode is true.
+control_plane_endpoint: ""
+kubernetes_version: "1.30"
+
+pod_cidr: 10.244.0.0/16
+service_cidr: 10.96.0.0/12
+cni_plugin: calico          # calico | flannel | cilium
+container_runtime: containerd
+kube_proxy_mode: iptables
+
+install_metrics_server: true
+storage_provisioner: local-path   # local-path | longhorn | nfs | none
+storage_default_class: true
+
+reset_existing_cluster: true
+allow_scheduling_on_control_plane: false
+fetch_kubeconfig: true
+
+# Inventory
+control_planes:
+  - { name: cp-1, ip: 10.0.0.10 }
+workers:
+  - { name: worker-1, ip: 10.0.0.20 }

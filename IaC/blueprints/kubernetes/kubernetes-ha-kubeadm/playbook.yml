@@ -1,0 +1,638 @@
+---
+# Rendered from template: Kubernetes Cluster (kubeadm)
+# OpenSible k8s template generation: 2026-07-metrics-tls-v10
+# Cluster: cluster (HA=False, control-plane=1, workers=1)
+# Kubernetes: v1.30.4 | CNI: calico | Pod CIDR: 10.244.0.0/16
+# kube-proxy: iptables
+# Inventory sidecar: inventories/cluster.yml
+
+- name: "k8s :: prepare nodes (cluster)"
+  hosts: "10.0.0.10,10.0.0.20,"
+  become: true
+  gather_facts: false
+  vars:
+    _node_users:
+      10.0.0.10: root
+      10.0.0.20: root
+    _node_ports:
+      10.0.0.10: 22
+      10.0.0.20: 22
+    _node_k8s_names:
+      10.0.0.10: "cp-1"
+      10.0.0.20: "worker-1"
+    ansible_user: "{{ _node_users[inventory_hostname] | default('root') }}"
+    ansible_port: "{{ _node_ports[inventory_hostname] | default(22) }}"
+    ansible_python_interpreter: /usr/bin/python3
+    k8s_node_name: "{{ _node_k8s_names[inventory_hostname] | default(inventory_hostname | replace('.', '-')) }}"
+  tasks:
+    - name: Bootstrap Python (raw)
+      ansible.builtin.raw: |
+        set -e
+        if ! command -v python3 >/dev/null 2>&1; then
+          if command -v apt-get >/dev/null 2>&1; then
+            apt-get update && apt-get install -y python3
+          elif command -v dnf >/dev/null 2>&1; then
+            dnf install -y python3
+          elif command -v yum >/dev/null 2>&1; then
+            yum install -y python3
+          fi
+        fi
+      changed_when: false
+    - name: Gather facts
+      ansible.builtin.setup:
+    - name: Ensure /etc/hosts has cluster peer entries
+      ansible.builtin.blockinfile:
+        path: /etc/hosts
+        marker: "# {mark} ANSIBLE MANAGED: k8s cluster peers"
+        block: |
+          10.0.0.10 cp-1
+          10.0.0.20 worker-1
+        create: true
+        mode: '0644'
+    - name: Set unique Kubernetes node hostname
+      ansible.builtin.hostname:
+        name: '{{ k8s_node_name }}'
+        use: systemd
+    - name: Disable swap (runtime)
+      ansible.builtin.shell: |
+        set -e
+        awk 'NR > 1 {found=1} END {exit found ? 0 : 1}' /proc/swaps || exit 0
+        if command -v systemctl >/dev/null 2>&1; then
+          systemctl --no-block stop '*.swap' 2>/dev/null || true
+        fi
+        timeout -k 5s 40s swapoff -a
+      args: {executable: /bin/bash}
+      changed_when: false
+      failed_when: false
+    - name: Disable swap (fstab)
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^([^#].*\s+swap\s+.*)$'
+        replace: '# \1'
+    - name: Verify swap is disabled for kubeadm
+      ansible.builtin.shell: awk 'NR > 1 {print $1}' /proc/swaps
+      register: active_swaps
+      changed_when: false
+      failed_when: active_swaps.stdout | trim != ''
+    - name: Install Kubernetes node prerequisite packages (Debian/Ubuntu)
+      ansible.builtin.apt:
+        name: [apt-transport-https, ca-certificates, curl, gnupg, containerd, conntrack, ipset, iptables, ebtables, ethtool, socat, kmod, coreutils, util-linux]
+        state: present
+        update_cache: true
+      when: ansible_os_family == 'Debian'
+    - name: Install Kubernetes node prerequisite packages (RHEL family)
+      ansible.builtin.package:
+        name: [ca-certificates, curl, gnupg2, containerd, conntrack-tools, ipset, iptables, ebtables, ethtool, socat, kmod, coreutils, util-linux]
+        state: present
+      when: ansible_os_family == 'RedHat'
+    - name: Load required kernel modules
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/k8s.conf
+        mode: '0644'
+        content: |
+          overlay
+          br_netfilter
+          nf_conntrack
+    - name: Load required kernel modules now
+      ansible.builtin.command: modprobe {{ item }}
+      loop: [overlay, br_netfilter, nf_conntrack]
+      environment:
+        PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+      changed_when: false
+    - name: Switch iptables to legacy backend (Debian/Ubuntu, required by kube-proxy iptables mode)
+      ansible.builtin.shell: |
+        set -e
+        if [ -x /usr/sbin/iptables-legacy ]; then update-alternatives --set iptables /usr/sbin/iptables-legacy; fi
+        if [ -x /usr/sbin/ip6tables-legacy ]; then update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy; fi
+        if [ -x /usr/sbin/arptables-legacy ]; then update-alternatives --set arptables /usr/sbin/arptables-legacy || true; fi
+        if [ -x /usr/sbin/ebtables-legacy ]; then update-alternatives --set ebtables /usr/sbin/ebtables-legacy || true; fi
+      args: {executable: /bin/bash}
+      when: ansible_os_family == 'Debian'
+      changed_when: false
+    - name: Verify iptables backend
+      ansible.builtin.command: iptables --version
+      register: iptables_version
+      changed_when: false
+    - name: Sysctl for k8s networking
+      ansible.builtin.copy:
+        dest: /etc/sysctl.d/k8s.conf
+        mode: '0644'
+        content: |
+          net.bridge.bridge-nf-call-iptables  = 1
+          net.bridge.bridge-nf-call-ip6tables = 1
+          net.ipv4.ip_forward                 = 1
+          net.ipv4.conf.all.rp_filter         = 0
+          net.ipv4.conf.default.rp_filter     = 0
+    - name: Apply sysctl
+      ansible.builtin.command: sysctl --system
+      changed_when: false
+    - name: Allow Kubernetes control-plane ports through host firewall
+      ansible.builtin.shell: |
+        set +e
+        if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi '^Status: active'; then
+          ufw allow 6443/tcp >/dev/null 2>&1 || true
+          ufw allow 2379:2380/tcp >/dev/null 2>&1 || true
+        fi
+        if command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+          firewall-cmd --permanent --add-port=6443/tcp >/dev/null 2>&1 || true
+          firewall-cmd --permanent --add-port=2379-2380/tcp >/dev/null 2>&1 || true
+          firewall-cmd --reload >/dev/null 2>&1 || true
+        fi
+      args: {executable: /bin/bash}
+      changed_when: false
+      when: inventory_hostname in ['10.0.0.10']
+    - name: Ensure containerd config dir
+      ansible.builtin.file: {path: /etc/containerd, state: directory, mode: '0755'}
+    - name: Remove Debian stub containerd config (disabled CRI plugin)
+      ansible.builtin.shell: |
+        if [ -f /etc/containerd/config.toml ] && grep -q 'disabled_plugins.*cri' /etc/containerd/config.toml; then
+          rm -f /etc/containerd/config.toml
+        fi
+      changed_when: false
+    - name: Generate default containerd config (always regenerate)
+      ansible.builtin.shell: containerd config default > /etc/containerd/config.toml
+      changed_when: true
+      notify: restart containerd
+    - name: Ensure containerd CRI plugin is enabled
+      ansible.builtin.replace:
+        path: /etc/containerd/config.toml
+        regexp: '^\s*disabled_plugins\s*=.*$'
+        replace: 'disabled_plugins = []'
+      notify: restart containerd
+    - name: Force SystemdCgroup = true for runc (robust — handles missing key)
+      ansible.builtin.shell: |
+        set -e
+        cfg=/etc/containerd/config.toml
+        python3 - <<'PY'
+        import re, io
+        p = '/etc/containerd/config.toml'
+        s = open(p).read()
+        # 1. Replace existing SystemdCgroup line if present
+        new, n = re.subn(r'SystemdCgroup\s*=\s*(true|false)', 'SystemdCgroup = true', s)
+        if n == 0:
+            # 2. Insert into runc.options block if the block exists
+            block = r'(\[plugins\."io\.containerd\.grpc\.v1\.cri"\.containerd\.runtimes\.runc\.options\][^\[]*)'
+            if re.search(block, new):
+                new = re.sub(block, lambda m: m.group(1).rstrip() + '\n  SystemdCgroup = true\n', new, count=1)
+            else:
+                # 3. Append a full runc.options block at the end
+                new += '\n[plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options]\n  SystemdCgroup = true\n'
+        # Pin sandbox image too
+        new, _ = re.subn(r'sandbox_image\s*=\s*"[^"]*"', 'sandbox_image = "registry.k8s.io/pause:3.9"', new)
+        if 'sandbox_image' not in new:
+            new = re.sub(r'(\[plugins\."io\.containerd\.grpc\.v1\.cri"\][^\[]*)', lambda m: m.group(1).rstrip() + '\n  sandbox_image = "registry.k8s.io/pause:3.9"\n', new, count=1)
+        open(p, 'w').write(new)
+        PY
+      changed_when: true
+      notify: restart containerd
+    - name: Apply containerd configuration NOW (before kubelet starts)
+      ansible.builtin.meta: flush_handlers
+    - name: Verify SystemdCgroup is enabled in containerd
+      ansible.builtin.shell: grep -E 'SystemdCgroup\s*=\s*true' /etc/containerd/config.toml
+      changed_when: false
+    - name: Verify containerd is actually using systemd cgroup driver at runtime
+      ansible.builtin.shell: |
+        set -e
+        systemctl restart containerd
+        sleep 3
+        # containerd exposes runtime config via `containerd config dump`
+        containerd config dump 2>/dev/null | grep -E 'SystemdCgroup\s*=\s*true' >/dev/null
+      changed_when: false
+    - name: Apply containerd configuration before kubelet starts
+      ansible.builtin.meta: flush_handlers
+    - name: Ensure containerd running
+      ansible.builtin.systemd: {name: containerd, state: started, enabled: true}
+    - name: Configure crictl for containerd
+      ansible.builtin.copy:
+        dest: /etc/crictl.yaml
+        mode: '0644'
+        content: |
+          runtime-endpoint: unix:///run/containerd/containerd.sock
+          image-endpoint: unix:///run/containerd/containerd.sock
+          timeout: 10
+          debug: false
+    - name: Kubernetes apt keyring dir
+      ansible.builtin.file: {path: /etc/apt/keyrings, state: directory, mode: '0755'}
+      when: ansible_os_family == 'Debian'
+    - name: Add Kubernetes apt key
+      ansible.builtin.shell: |
+        curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key \
+          | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+      args: {creates: /etc/apt/keyrings/kubernetes-apt-keyring.gpg}
+      when: ansible_os_family == 'Debian'
+    - name: Add Kubernetes apt repo
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/kubernetes.list
+        mode: '0644'
+        content: 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /'
+      when: ansible_os_family == 'Debian'
+    - name: Add Kubernetes yum/dnf repo (RHEL family)
+      ansible.builtin.copy:
+        dest: /etc/yum.repos.d/kubernetes.repo
+        mode: '0644'
+        content: |
+          [kubernetes]
+          name=Kubernetes v1.30
+          baseurl=https://pkgs.k8s.io/core:/stable:/v1.30/rpm/
+          enabled=1
+          gpgcheck=1
+          gpgkey=https://pkgs.k8s.io/core:/stable:/v1.30/rpm/repodata/repomd.xml.key
+      when: ansible_os_family == 'RedHat'
+    - name: Install kubeadm/kubelet/kubectl
+      ansible.builtin.apt:
+        name: ["kubeadm=1.30.4-*", "kubelet=1.30.4-*", "kubectl=1.30.4-*"]
+        state: present
+        update_cache: true
+      when: ansible_os_family == 'Debian'
+    - name: Install kubeadm/kubelet/kubectl (RHEL family)
+      ansible.builtin.package:
+        name: [kubeadm, kubelet, kubectl]
+        state: present
+      when: ansible_os_family == 'RedHat'
+    - name: Hold kube* packages
+      ansible.builtin.dpkg_selections:
+        name: '{{ item }}'
+        selection: hold
+      loop: [kubeadm, kubelet, kubectl]
+      when: ansible_os_family == 'Debian'
+    - name: Pin kubelet node IP
+      ansible.builtin.copy:
+        dest: /etc/default/kubelet
+        mode: '0644'
+        content: |
+          KUBELET_EXTRA_ARGS=--node-ip={{ inventory_hostname }} --hostname-override={{ k8s_node_name }}
+      notify: restart kubelet
+    - name: Enable kubelet
+      ansible.builtin.systemd: {name: kubelet, enabled: true, state: started}
+  handlers:
+    - name: restart containerd
+      ansible.builtin.systemd: {name: containerd, state: restarted}
+    - name: restart kubelet
+      ansible.builtin.systemd: {name: kubelet, state: restarted}
+
+- name: "k8s :: bootstrap first control-plane (cluster)"
+  hosts: "10.0.0.10,"
+  become: true
+  gather_facts: true
+  vars:
+    _node_users:
+      10.0.0.10: root
+    _node_ports:
+      10.0.0.10: 22
+    _node_k8s_names:
+      10.0.0.10: "cp-1"
+    ansible_user: "{{ _node_users[inventory_hostname] | default('root') }}"
+    ansible_port: "{{ _node_ports[inventory_hostname] | default(22) }}"
+    ansible_python_interpreter: /usr/bin/python3
+    k8s_node_name: "{{ _node_k8s_names[inventory_hostname] | default(inventory_hostname | replace('.', '-')) }}"
+    cp_api_endpoints:
+      - "10.0.0.10:6443"
+  tasks:
+    - name: Check if cluster is already initialized
+      ansible.builtin.stat: {path: /etc/kubernetes/admin.conf}
+      register: admin_conf
+    - name: Ensure ~/.kube exists for root
+      ansible.builtin.file: {path: /root/.kube, state: directory, mode: '0700'}
+    - name: Create local bootstrap kubeconfig for existing cluster
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/bootstrap-local.conf
+        remote_src: true
+        mode: '0600'
+      when: admin_conf.stat.exists
+    - name: Pin bootstrap kubeconfig to this control-plane IP
+      ansible.builtin.replace:
+        path: /root/.kube/bootstrap-local.conf
+        regexp: '^\s*server:\s+https://.*:6443\s*$'
+        replace: '    server: https://{{ inventory_hostname }}:6443'
+      when: admin_conf.stat.exists
+    - name: Check existing control-plane API health
+      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
+      register: existing_api_ready
+      failed_when: false
+      changed_when: false
+      when: admin_conf.stat.exists
+    - name: Stop on stale kubeadm state
+      ansible.builtin.fail:
+        msg: 'Kubeadm state exists but the API is not reachable on this control-plane IP. Enable Reset existing kubeadm state before install, then rerun this template instance.'
+      when: admin_conf.stat.exists and existing_api_ready.rc != 0
+    - name: kubeadm init
+      ansible.builtin.command: >-
+        kubeadm init --kubernetes-version=v1.30.4 --pod-network-cidr=10.244.0.0/16 --service-cidr=10.96.0.0/12 --apiserver-advertise-address={{ inventory_hostname }} --node-name={{ k8s_node_name }} --cri-socket=unix:///run/containerd/containerd.sock --apiserver-cert-extra-sans=10.0.0.10,cp-1
+      when: not admin_conf.stat.exists
+      register: kubeadm_init
+    - name: Copy admin.conf for root kubectl
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/config
+        remote_src: true
+        mode: '0600'
+    - name: Create local bootstrap kubeconfig
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/bootstrap-local.conf
+        remote_src: true
+        mode: '0600'
+    - name: Pin bootstrap kubeconfig to this control-plane IP
+      ansible.builtin.replace:
+        path: /root/.kube/bootstrap-local.conf
+        regexp: '^\s*server:\s+https://.*:6443\s*$'
+        replace: '    server: https://{{ inventory_hostname }}:6443'
+    - name: Wait for Kubernetes API to become ready
+      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
+      register: api_ready
+      retries: 60
+      delay: 5
+      until: api_ready.rc == 0
+      changed_when: false
+    - name: Patch kube-proxy for containerized/LXC-safe conntrack (and IPVS mode if selected)
+      ansible.builtin.shell: |
+        set -e
+        export KUBECONFIG=/root/.kube/bootstrap-local.conf
+        tmp=$(mktemp)
+        kubectl -n kube-system get cm kube-proxy -o yaml > "$tmp"
+        # Disable conntrack sysctl writes (read-only in LXC/OrbStack)
+        sed -i -E 's/(^\s*maxPerCore:).*/\1 0/; s/(^\s*min:) [0-9]+/\1 0/' "$tmp"
+        kubectl apply -f "$tmp"
+        rm -f "$tmp"
+        kubectl -n kube-system rollout restart daemonset kube-proxy
+      args: {executable: /bin/bash}
+      changed_when: true
+    - name: Generate worker join command
+      ansible.builtin.command: kubeadm token create --kubeconfig=/root/.kube/bootstrap-local.conf --print-join-command
+      register: worker_join_cmd
+      changed_when: false
+    - name: Slurp admin.conf for cluster ops
+      ansible.builtin.slurp: {src: /etc/kubernetes/admin.conf}
+      register: first_cp_admin_conf_b64
+    - name: Set join facts
+      ansible.builtin.set_fact:
+        kubeadm_worker_join: "{{ worker_join_cmd.stdout | trim }}"
+        first_cp_admin_conf_b64_content: "{{ first_cp_admin_conf_b64.content }}"
+    - name: Verify Kubernetes API is ready for node joins
+      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
+      register: api_ready_for_joins
+      retries: 60
+      delay: 5
+      until: api_ready_for_joins.rc == 0
+      changed_when: false
+
+- name: "k8s :: join workers (cluster)"
+  hosts: "10.0.0.20,"
+  become: true
+  gather_facts: false
+  vars:
+    _node_users:
+      10.0.0.10: root
+      10.0.0.20: root
+    _node_ports:
+      10.0.0.10: 22
+      10.0.0.20: 22
+    _node_k8s_names:
+      10.0.0.10: "cp-1"
+      10.0.0.20: "worker-1"
+    ansible_user: "{{ _node_users[inventory_hostname] | default('root') }}"
+    ansible_port: "{{ _node_ports[inventory_hostname] | default(22) }}"
+    ansible_python_interpreter: /usr/bin/python3
+    k8s_node_name: "{{ _node_k8s_names[inventory_hostname] | default(inventory_hostname | replace('.', '-')) }}"
+    first_cp_ip: 10.0.0.10
+    cp_api_endpoints:
+      - "10.0.0.10:6443"
+  tasks:
+    - name: Check if already joined
+      ansible.builtin.stat: {path: /etc/kubernetes/kubelet.conf}
+      register: kubelet_conf
+    - name: Validate worker join credentials from first control-plane
+      ansible.builtin.assert:
+        that:
+          - hostvars[first_cp_ip].kubeadm_worker_join is defined
+          - hostvars[first_cp_ip].kubeadm_worker_join | length > 0
+        fail_msg: 'Missing kubeadm worker join command on the first control-plane. Re-run the template with the first control-plane included.'
+      when: not kubelet_conf.stat.exists
+    - name: Join cluster as worker (with endpoint failover + retries)
+      ansible.builtin.shell: |
+        set +e
+        ENDPOINTS="{{ cp_api_endpoints | join(' ') }}"
+        JOIN_CMD_BASE="{{ hostvars[first_cp_ip].kubeadm_worker_join | trim | regex_replace('\\s+', ' ') }}"
+        NODE_NAME="{{ k8s_node_name }}"
+        FIRST_CP="{{ first_cp_ip }}"
+        LAST_ERR=""
+        for attempt in $(seq 1 30); do
+          for endpoint in $ENDPOINTS; do
+            host="${endpoint%:*}"; port="${endpoint##*:}"
+            timeout 3 bash -c "</dev/tcp/${host}/${port}" >/dev/null 2>&1 || continue
+            code=$(curl -sk -o /dev/null -w '%{http_code}' --max-time 5 "https://${endpoint}/healthz" 2>/dev/null || echo 000)
+            case "$code" in 200|401|403) : ;; *) continue ;; esac
+            REWRITTEN=$(echo "$JOIN_CMD_BASE" | sed -e "s|localhost:6443|${endpoint}|g" -e "s|127.0.0.1:6443|${endpoint}|g" -e "s|${FIRST_CP}:6443|${endpoint}|g")
+            echo "[attempt $attempt] joining via $endpoint"
+            OUT=$($REWRITTEN --cri-socket=unix:///run/containerd/containerd.sock --node-name "$NODE_NAME" 2>&1)
+            rc=$?; echo "$OUT"
+            if [ $rc -eq 0 ]; then exit 0; fi
+            LAST_ERR="$OUT"
+            if echo "$OUT" | grep -qi 'already joined'; then exit 0; fi
+            kubeadm reset -f --cri-socket=unix:///run/containerd/containerd.sock >/dev/null 2>&1 || kubeadm reset -f >/dev/null 2>&1 || true
+            rm -rf /etc/kubernetes /var/lib/kubelet/pki /etc/cni/net.d 2>/dev/null || true
+          done
+          sleep 15
+        done
+        echo "$LAST_ERR" >&2
+        exit 1
+      args: {executable: /bin/bash}
+      when: not kubelet_conf.stat.exists
+    - name: Wait for joined worker kubelet config
+      ansible.builtin.stat: {path: /etc/kubernetes/kubelet.conf}
+      register: joined_worker_kubelet_conf
+      retries: 30
+      delay: 10
+      until: joined_worker_kubelet_conf.stat.exists
+
+- name: "k8s :: post-install (cluster)"
+  hosts: "10.0.0.10,"
+  become: true
+  gather_facts: false
+  vars:
+    _node_users:
+      10.0.0.10: root
+    _node_ports:
+      10.0.0.10: 22
+    _node_k8s_names:
+      10.0.0.10: "cp-1"
+    ansible_user: "{{ _node_users[inventory_hostname] | default('root') }}"
+    ansible_port: "{{ _node_ports[inventory_hostname] | default(22) }}"
+    ansible_python_interpreter: /usr/bin/python3
+    k8s_node_name: "{{ _node_k8s_names[inventory_hostname] | default(inventory_hostname | replace('.', '-')) }}"
+    cp_api_endpoints:
+      - "10.0.0.10:6443"
+  tasks:
+    - name: Ensure bootstrap kubeconfig is available for post-install checks
+      ansible.builtin.copy:
+        src: /etc/kubernetes/admin.conf
+        dest: /root/.kube/bootstrap-local.conf
+        remote_src: true
+        mode: '0600'
+    - name: Pin post-install kubeconfig to this control-plane IP
+      ansible.builtin.replace:
+        path: /root/.kube/bootstrap-local.conf
+        regexp: '^\s*server:\s+https://.*:6443\s*$'
+        replace: '    server: https://{{ inventory_hostname }}:6443'
+    - name: Verify Kubernetes API before post-install add-ons
+      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
+      register: api_ready_before_addons
+      retries: 60
+      delay: 5
+      until: api_ready_before_addons.rc == 0
+      changed_when: false
+    - name: Write Calico LXC-safe patcher script
+      ansible.builtin.copy:
+        dest: /usr/local/sbin/opensible-calico-patch.py
+        mode: '0755'
+        content: |
+          #!/usr/bin/env python3
+          import re, sys
+          p = sys.argv[1]
+          s = open(p).read()
+          # Force IPIP off; VXLAN is the LXC/OrbStack-safe dataplane.
+          s = re.sub(r'(name: CALICO_IPV4POOL_IPIP\s*\n\s*value: ")[^"]+(")', r'\1Never\2', s)
+          extra = (
+              '            - name: CALICO_IPV4POOL_VXLAN\n              value: "CrossSubnet"\n'
+              '            - name: FELIX_VXLANENABLED\n              value: "true"\n'
+              '            - name: FELIX_IPINIPENABLED\n              value: "false"\n'
+              '            - name: FELIX_IGNORELOOSERPF\n              value: "true"\n'
+              '            - name: FELIX_BPFENABLED\n              value: "false"\n'
+              '            - name: FELIX_XDPENABLED\n              value: "false"\n'
+              '            - name: FELIX_HEALTHENABLED\n              value: "true"\n'
+          )
+          s = s.replace(
+              '- name: CLUSTER_TYPE\n              value: "k8s,bgp"',
+              '- name: CLUSTER_TYPE\n              value: "k8s,bgp"\n' + extra,
+              1,
+          )
+          # Drop the mount-bpffs init container: BPF is disabled and this container
+          # frequently fails inside LXC because /sys/fs/bpf is not writable.
+          s = re.sub(
+              r'\n        - name: "mount-bpffs".*?(?=\n        - name: |\n      containers:)',
+              '\n', s, flags=re.S,
+          )
+          open(p, 'w').write(s)
+    - name: Install Calico CNI with matching pod CIDR (LXC/OrbStack-safe)
+      ansible.builtin.shell: |
+        set -e
+        curl -fsSL https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml -o /tmp/calico.yaml
+        sed -i -E '/name: CALICO_IPV4POOL_CIDR/{n;s#value: "[^"]+"#value: "10.244.0.0/16"#;}' /tmp/calico.yaml
+        virt=$(systemd-detect-virt 2>/dev/null || echo none)
+        is_lxc=0
+        case "$virt" in lxc|lxc-libvirt|container-other|podman|docker|openvz) is_lxc=1 ;; esac
+        if [ "$is_lxc" = 0 ] && uname -r | grep -qiE 'orbstack|microsoft|wsl'; then is_lxc=1; fi
+        if [ "$is_lxc" = 1 ]; then
+          echo '[calico] containerized host detected -> VXLAN, no IPIP/BPF/XDP'
+          python3 /usr/local/sbin/opensible-calico-patch.py /tmp/calico.yaml
+        fi
+        kubectl apply -f /tmp/calico.yaml
+      args: {executable: /bin/bash}
+      environment: {KUBECONFIG: /root/.kube/bootstrap-local.conf}
+      register: cni_apply
+      changed_when: "'created' in cni_apply.stdout or 'configured' in cni_apply.stdout"
+    - name: Verify Kubernetes API remains healthy after CNI
+      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
+      register: api_ready_after_cni
+      retries: 60
+      delay: 5
+      until: api_ready_after_cni.rc == 0
+      changed_when: false
+    - name: Apply metrics-server manifest
+      ansible.builtin.command: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+      environment: {KUBECONFIG: /root/.kube/bootstrap-local.conf}
+      register: metrics_apply
+      changed_when: "'created' in metrics_apply.stdout or 'configured' in metrics_apply.stdout"
+    - name: Patch metrics-server to tolerate kubelet self-signed certs (no IP SANs)
+      ansible.builtin.shell: |
+        set -e
+        DESIRED_ADDS='--kubelet-insecure-tls --kubelet-preferred-address-types=InternalIP,Hostname,ExternalIP'
+        # Retry on optimistic-concurrency conflicts (deployment is rolling out)
+        for i in $(seq 1 20); do
+          NEW_ARGS=$(kubectl -n kube-system get deploy metrics-server -o json \
+            | python3 -c "import sys,json,os; d=json.load(sys.stdin); a=d['spec']['template']['spec']['containers'][0].get('args',[]) or []; adds=os.environ['DESIRED_ADDS'].split(); a=[x for x in a if x.split('=')[0] not in {y.split('=')[0] for y in adds}]+adds; print(json.dumps(a))")
+          # If already contains --kubelet-insecure-tls, nothing to do
+          CUR=$(kubectl -n kube-system get deploy metrics-server -o jsonpath='{.spec.template.spec.containers[0].args}')
+          if echo "$CUR" | grep -q -- '--kubelet-insecure-tls' && echo "$CUR" | grep -q -- 'InternalIP,Hostname'; then
+            echo 'metrics-server args already patched'; break
+          fi
+          if kubectl -n kube-system patch deployment metrics-server --type=json \
+               -p="[{\"op\":\"replace\",\"path\":\"/spec/template/spec/containers/0/args\",\"value\":${NEW_ARGS}}]" 2>/tmp/mspatch.err; then
+            break
+          fi
+          if grep -q 'Conflict\|has been modified' /tmp/mspatch.err; then
+            echo "conflict, retry $i/20"; sleep 3; continue
+          fi
+          cat /tmp/mspatch.err >&2; exit 1
+        done
+        kubectl -n kube-system rollout status deploy/metrics-server --timeout=180s || true
+      environment: {KUBECONFIG: /root/.kube/bootstrap-local.conf}
+      changed_when: false
+      failed_when: false
+    - name: Verify Kubernetes API remains healthy after add-ons
+      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
+      register: api_ready_after_addons
+      retries: 60
+      delay: 5
+      until: api_ready_after_addons.rc == 0
+      changed_when: false
+    - name: Wait for all Kubernetes nodes to become Ready
+      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf wait --for=condition=Ready nodes --all --timeout=300s
+      register: nodes_ready
+      failed_when: false
+      changed_when: false
+    - name: Collect Kubernetes diagnostics when cluster is not stable
+      ansible.builtin.shell: |
+        set +e
+        echo '=== API /readyz ==='
+        kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz 2>&1
+        echo
+        echo '=== Nodes ==='
+        kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get nodes -o wide 2>&1
+        echo
+        echo '=== kube-system pods ==='
+        kubectl --kubeconfig=/root/.kube/bootstrap-local.conf -n kube-system get pods -o wide 2>&1
+        echo
+        echo '=== kubelet status ==='
+        systemctl --no-pager -l status kubelet 2>&1 | sed -n '1,120p'
+        echo
+        echo '=== control-plane containers ==='
+        crictl ps -a 2>&1 | sed -n '1,120p'
+        echo
+        echo '=== kube-proxy pods ==='
+        kubectl --kubeconfig=/root/.kube/bootstrap-local.conf -n kube-system get pods -l k8s-app=kube-proxy -o wide 2>&1
+        echo
+        echo '=== calico install-cni logs ==='
+        for pod in $(kubectl --kubeconfig=/root/.kube/bootstrap-local.conf -n kube-system get pods -l k8s-app=calico-node -o name 2>/dev/null); do
+          echo "--- $pod / install-cni ---"
+          kubectl --kubeconfig=/root/.kube/bootstrap-local.conf -n kube-system logs "$pod" -c install-cni --tail=80 2>&1 || true
+        done
+        echo
+        echo '=== kube-scheduler logs ==='
+        for pod in $(kubectl --kubeconfig=/root/.kube/bootstrap-local.conf -n kube-system get pods -l component=kube-scheduler -o name 2>/dev/null); do
+          echo "--- $pod / kube-scheduler ---"
+          kubectl --kubeconfig=/root/.kube/bootstrap-local.conf -n kube-system logs "$pod" -c kube-scheduler --tail=80 2>&1 || true
+        done
+      args: {executable: /bin/bash}
+      register: cluster_diag
+      changed_when: false
+      when: nodes_ready.rc != 0
+    - name: Stop if Kubernetes cluster did not stabilize
+      ansible.builtin.fail:
+        msg: '{{ cluster_diag.stdout | default(nodes_ready.stderr, true) }}'
+      when: nodes_ready.rc != 0
+    - name: Fetch kubeconfig to controller (~/.kube/cluster.yaml)
+      ansible.builtin.fetch:
+        src: /etc/kubernetes/admin.conf
+        dest: "~/.kube/cluster.yaml"
+        flat: true
+    - name: Rewrite server URL in fetched kubeconfig
+      delegate_to: localhost
+      become: false
+      ansible.builtin.replace:
+        path: "~/.kube/cluster.yaml"
+        regexp: 'https://[^\s]+:6443'
+        replace: "https://{{ inventory_hostname }}:6443"
+
+# First control-plane node: cp-1

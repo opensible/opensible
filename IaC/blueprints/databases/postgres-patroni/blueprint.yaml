@@ -1,0 +1,40 @@
+id: postgres-patroni
+name: PostgreSQL HA (Patroni + etcd)
+group: databases
+category: Relational Databases
+description: >-
+  Production-style PostgreSQL HA cluster managed by Patroni with an
+  embedded etcd v3 DCS on every node. PostgreSQL is installed from the
+  PGDG repositories; Patroni runs from a pinned Python venv and is the
+  sole supervisor of postgres (the OS postgresql service is stopped
+  and disabled). The first node becomes the initial leader and the
+  rest are streaming replicas; failover is automatic once at least
+  three nodes are healthy.
+logo: https://cdn.simpleicons.org/postgresql/4169E1
+tags: [postgres, patroni, etcd, ha, systemd, replication]
+author: opensible
+stars: 112
+source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/databases/postgres-patroni
+requires:
+  ansible: ">=2.14"
+entrypoint: playbook.yml
+variables:
+  cluster_id: opensible-pg
+  pg_version: "16"
+  listen_address: 0.0.0.0
+  pg_port: 5432
+  patroni_rest_port: 8008
+  etcd_client_port: 2379
+  etcd_peer_port: 2380
+  synchronous_mode: false
+  maximum_lag_on_failover: 1048576
+  ttl: 30
+  loop_wait: 10
+  retry_timeout: 10
+  max_connections: 200
+  shared_buffers: 256MB
+  wal_level: replica
+  etcd_version: 3.5.16
+  patroni_version: 3.3.2
+  open_firewall: true
+  become: true

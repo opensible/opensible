@@ -1,0 +1,499 @@
+---
+# Rendered from template: k3s Cluster Bootstrap
+# OpenSible k3s template generation: 2026-07-k3s-hardened-v10
+# Cluster: opensible-k3s (HA=False, servers=1, agents=1)
+# k3s version/channel: stable | Flannel: vxlan | Pod CIDR: 10.42.0.0/16
+# Inventory sidecar: inventories/opensible-k3s.yml
+
+- name: Prepare nodes for k3s
+  hosts: 10.0.0.10,10.0.0.20,
+  become: true
+  gather_facts: true
+  any_errors_fatal: true
+  vars:
+    _node_users:
+      10.0.0.10: root
+      10.0.0.20: root
+    _node_ports:
+      10.0.0.10: 22
+      10.0.0.20: 22
+    _node_names:
+      10.0.0.10: "k3s-server-1"
+      10.0.0.20: "k3s-agent-1"
+  pre_tasks:
+    - name: Apply per-host SSH connection settings
+      ansible.builtin.set_fact:
+        ansible_user: "{{ _node_users[inventory_hostname] | default(ansible_user) }}"
+        ansible_port: "{{ _node_ports[inventory_hostname] | default(ansible_port | default(22)) }}"
+  tasks:
+    - name: Detect container/LXC environment (OrbStack, Proxmox LXC, etc.)
+      ansible.builtin.shell: |
+        set -e
+        virt=$(systemd-detect-virt 2>/dev/null || echo unknown)
+        echo "virt=$virt"
+      register: k3s_virt_probe
+      changed_when: false
+      failed_when: false
+
+    - name: Set fact for LXC/container-safe defaults
+      ansible.builtin.set_fact:
+        k3s_in_container: "{{ 'lxc' in (k3s_virt_probe.stdout | default('')) or 'container' in (k3s_virt_probe.stdout | default('')) or 'docker' in (k3s_virt_probe.stdout | default('')) }}"
+
+    - name: Remove existing Kubernetes/k3s state before install
+      ansible.builtin.shell: |
+        set +e
+        echo '[pre-clean] removing existing kubeadm/k3s/rke2/microk8s state if present'
+        for unit in k3s k3s-agent rke2-server rke2-agent kubelet snap.microk8s.daemon-kubelite microk8s.daemon-kubelite; do
+          systemctl stop "$unit" 2>/dev/null || true
+          systemctl disable "$unit" 2>/dev/null || true
+          systemctl reset-failed "$unit" 2>/dev/null || true
+        done
+        if [ -x /usr/local/bin/k3s-uninstall.sh ]; then /usr/local/bin/k3s-uninstall.sh || true; fi
+        if [ -x /usr/local/bin/k3s-agent-uninstall.sh ]; then /usr/local/bin/k3s-agent-uninstall.sh || true; fi
+        if [ -x /usr/local/bin/rke2-uninstall.sh ]; then /usr/local/bin/rke2-uninstall.sh || true; fi
+        if [ -x /usr/local/bin/rke2-agent-uninstall.sh ]; then /usr/local/bin/rke2-agent-uninstall.sh || true; fi
+        if command -v kubeadm >/dev/null 2>&1; then
+          timeout 60s kubeadm reset -f --cri-socket=unix:///run/containerd/containerd.sock 2>/dev/null || timeout 60s kubeadm reset -f || true
+        fi
+        if command -v microk8s >/dev/null 2>&1; then
+          timeout 60s microk8s reset --destroy-storage 2>/dev/null || true
+          snap remove microk8s --purge 2>/dev/null || true
+        fi
+        # Stop any leftover Kubernetes API process that still owns 6443.
+        if command -v ss >/dev/null 2>&1; then
+          ss -H -ltnp 'sport = :6443' 2>/dev/null | while read -r line; do
+            echo "[pre-clean] 6443 listener: $line"
+            for pid in $(printf '%s\n' "$line" | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p'); do
+              comm=$(ps -o comm= -p "$pid" 2>/dev/null | tr -d ' ')
+              case "$comm" in
+                kube-apiserver|k3s|rke2|kubelite|microk8s*) kill "$pid" 2>/dev/null || true; sleep 2; kill -9 "$pid" 2>/dev/null || true ;;
+                *) echo "[pre-clean] not killing non-Kubernetes process pid=$pid comm=$comm" ;;
+              esac
+            done
+          done
+        fi
+        # Unmount kubelet/CNI mounts before deleting directories.
+        awk '$2 ~ /^\/var\/lib\/kubelet/ || $2 ~ /^\/run\/k3s/ || $2 ~ /^\/run\/flannel/ {print $2}' /proc/mounts 2>/dev/null | sort -r | xargs -r -n1 umount -fl 2>/dev/null || true
+        rm -rf /etc/kubernetes /var/lib/etcd /etc/cni/net.d /var/lib/cni /var/lib/kubelet \
+               /etc/rancher/k3s /var/lib/rancher/k3s /run/k3s /run/flannel \
+               /etc/rancher/rke2 /var/lib/rancher/rke2 /var/lib/rancher/agent \
+               /var/snap/microk8s /snap/microk8s 2>/dev/null || true
+        for link in cni0 flannel.1 flannel-v6.1 kube-ipvs0 flannel-wg flannel-wg-v6 vxlan.calico; do ip link delete "$link" 2>/dev/null || true; done
+        ip link show 2>/dev/null | awk -F': ' '/^[0-9]+: cali/ {print $2}' | cut -d@ -f1 | xargs -r -n1 ip link delete 2>/dev/null || true
+        if command -v iptables-save >/dev/null 2>&1 && command -v iptables-restore >/dev/null 2>&1; then
+          iptables-save 2>/dev/null | grep -vE 'KUBE-|CNI-|FLANNEL|cali-|K3S' | iptables-restore 2>/dev/null || true
+        fi
+        if command -v ip6tables-save >/dev/null 2>&1 && command -v ip6tables-restore >/dev/null 2>&1; then
+          ip6tables-save 2>/dev/null | grep -vE 'KUBE-|CNI-|FLANNEL|cali-|K3S' | ip6tables-restore 2>/dev/null || true
+        fi
+        systemctl daemon-reload 2>/dev/null || true
+        for i in $(seq 1 20); do
+          if ! command -v ss >/dev/null 2>&1 || ! ss -H -ltn 'sport = :6443' 2>/dev/null | grep -q LISTEN; then
+            echo '[pre-clean] port 6443 is free'
+            exit 0
+          fi
+          sleep 1
+        done
+        echo '[pre-clean] warning: port 6443 is still in use after cleanup'
+        ss -H -ltnp 'sport = :6443' 2>/dev/null || true
+      args: { executable: /bin/bash }
+      failed_when: false
+      changed_when: true
+
+    - name: Disable swap now with bounded timeout (skipped in containers)
+      ansible.builtin.shell: |
+        set +e
+        active_swaps=$(awk 'NR > 1 { count++ } END { print count + 0 }' /proc/swaps 2>/dev/null || echo 0)
+        if [ "$active_swaps" -eq 0 ]; then
+          echo 'No active swap devices found.'
+          exit 0
+        fi
+        echo "Found $active_swaps active swap device(s); disabling with timeout."
+        if command -v timeout >/dev/null 2>&1; then
+          timeout 15s swapoff -a
+          rc=$?
+          if [ "$rc" -eq 124 ]; then
+            echo 'swapoff timed out after 15s; continuing so automation does not hang.'
+          fi
+          exit 0
+        fi
+        python3 - <<'PY' || true
+        import subprocess
+        try:
+            subprocess.run(['swapoff', '-a'], timeout=15, check=False)
+        except Exception as exc:
+            print(f'swapoff skipped/timeout: {exc}')
+        PY
+      args: { executable: /bin/bash }
+      failed_when: false
+      changed_when: false
+      when: not k3s_in_container | bool
+
+    - name: Check if /etc/fstab exists
+      ansible.builtin.stat:
+        path: /etc/fstab
+      register: k3s_fstab_stat
+
+    - name: Disable swap in /etc/fstab (persistent)
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^([^#].*\sswap\s.*)$'
+        replace: '# \1'
+      when: k3s_fstab_stat.stat.exists | bool and not k3s_in_container | bool
+      failed_when: false
+
+    - name: Load required kernel modules
+      ansible.builtin.shell: |
+        modprobe br_netfilter 2>/dev/null || true
+        modprobe overlay 2>/dev/null || true
+        modprobe nf_conntrack 2>/dev/null || true
+      changed_when: false
+      failed_when: false
+      when: not k3s_in_container | bool
+
+    - name: Persist kernel modules
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/k3s.conf
+        mode: '0644'
+        content: |
+          br_netfilter
+          overlay
+          nf_conntrack
+      when: not k3s_in_container | bool
+      failed_when: false
+
+    - name: Set sysctl for Kubernetes networking
+      ansible.posix.sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        sysctl_file: /etc/sysctl.d/99-k3s.conf
+        state: present
+        reload: true
+      loop:
+        - { name: net.bridge.bridge-nf-call-iptables, value: '1' }
+        - { name: net.bridge.bridge-nf-call-ip6tables, value: '1' }
+        - { name: net.ipv4.ip_forward, value: '1' }
+      when: not k3s_in_container | bool
+      failed_when: false
+
+    - name: Detect firewall in use
+      ansible.builtin.shell: |
+        if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -qi active; then echo ufw
+        elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state 2>/dev/null | grep -qi running; then echo firewalld
+        else echo none
+        fi
+      register: k3s_fw
+      changed_when: false
+      failed_when: false
+
+    - name: Open k3s firewall ports (ufw)
+      ansible.builtin.shell: |
+        ufw allow 6443/tcp || true
+        ufw allow 10250/tcp || true
+        ufw allow 8472/udp || true
+        ufw allow 51820/udp || true
+      when: k3s_fw.stdout | default('') == 'ufw'
+      changed_when: false
+      failed_when: false
+
+    - name: Open k3s firewall ports (firewalld)
+      ansible.builtin.shell: |
+        firewall-cmd --permanent --add-port=6443/tcp || true
+        firewall-cmd --permanent --add-port=10250/tcp || true
+        firewall-cmd --permanent --add-port=8472/udp || true
+        firewall-cmd --permanent --add-port=51820/udp || true
+        firewall-cmd --reload || true
+      when: k3s_fw.stdout | default('') == 'firewalld'
+      changed_when: false
+      failed_when: false
+
+- name: Install first k3s server (k3s-server-1)
+  hosts: 10.0.0.10,
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  vars:
+    k3s_token: "change-me-please"
+    _node_users:
+      10.0.0.10: root
+    _node_ports:
+      10.0.0.10: 22
+    _node_names:
+      10.0.0.10: "k3s-server-1"
+  pre_tasks:
+    - name: Apply per-host SSH connection settings
+      ansible.builtin.set_fact:
+        ansible_user: "{{ _node_users[inventory_hostname] | default(ansible_user) }}"
+        ansible_port: "{{ _node_ports[inventory_hostname] | default(ansible_port | default(22)) }}"
+  tasks:
+    - name: Install first k3s server (bootstrap, with retry + diagnostics)
+      ansible.builtin.shell: |
+        set -o pipefail
+        cleanup_existing_kubernetes() {
+          set +e
+          for unit in k3s k3s-agent rke2-server rke2-agent kubelet snap.microk8s.daemon-kubelite microk8s.daemon-kubelite; do systemctl stop "$unit" 2>/dev/null || true; systemctl disable "$unit" 2>/dev/null || true; systemctl reset-failed "$unit" 2>/dev/null || true; done
+          if [ -x /usr/local/bin/k3s-uninstall.sh ]; then /usr/local/bin/k3s-uninstall.sh || true; fi
+          if [ -x /usr/local/bin/k3s-agent-uninstall.sh ]; then /usr/local/bin/k3s-agent-uninstall.sh || true; fi
+          if [ -x /usr/local/bin/rke2-uninstall.sh ]; then /usr/local/bin/rke2-uninstall.sh || true; fi
+          if [ -x /usr/local/bin/rke2-agent-uninstall.sh ]; then /usr/local/bin/rke2-agent-uninstall.sh || true; fi
+          if command -v kubeadm >/dev/null 2>&1; then timeout 60s kubeadm reset -f --cri-socket=unix:///run/containerd/containerd.sock 2>/dev/null || timeout 60s kubeadm reset -f || true; fi
+          if command -v microk8s >/dev/null 2>&1; then timeout 60s microk8s reset --destroy-storage 2>/dev/null || true; snap remove microk8s --purge 2>/dev/null || true; fi
+          if command -v ss >/dev/null 2>&1; then
+            ss -H -ltnp 'sport = :6443' 2>/dev/null | while read -r line; do
+              echo "[k3s-bootstrap] 6443 listener before retry cleanup: $line"
+              for pid in $(printf '%s\n' "$line" | sed -n 's/.*pid=\([0-9][0-9]*\).*/\1/p'); do
+                comm=$(ps -o comm= -p "$pid" 2>/dev/null | tr -d ' ')
+                case "$comm" in kube-apiserver|k3s|rke2|kubelite|microk8s*) kill "$pid" 2>/dev/null || true; sleep 2; kill -9 "$pid" 2>/dev/null || true ;; *) echo "[k3s-bootstrap] non-Kubernetes 6443 owner kept: pid=$pid comm=$comm" ;; esac
+              done
+            done
+          fi
+          awk '$2 ~ /^\/var\/lib\/kubelet/ || $2 ~ /^\/run\/k3s/ || $2 ~ /^\/run\/flannel/ {print $2}' /proc/mounts 2>/dev/null | sort -r | xargs -r -n1 umount -fl 2>/dev/null || true
+          rm -rf /etc/kubernetes /var/lib/etcd /etc/cni/net.d /var/lib/cni /var/lib/kubelet /etc/rancher/k3s /var/lib/rancher/k3s /run/k3s /run/flannel /etc/rancher/rke2 /var/lib/rancher/rke2 /var/lib/rancher/agent 2>/dev/null || true
+          # Nuke stale kubeconfigs from prior kubeadm/k3s installs so k3s kubectl
+          # does not pick up old CA certs and hit x509 unknown-authority errors.
+          rm -f /root/.kube/config /root/.kube/config.bak /etc/kubernetes/admin.conf 2>/dev/null || true
+          for h in $(ls /home 2>/dev/null); do rm -f "/home/$h/.kube/config" 2>/dev/null || true; done
+          for link in cni0 flannel.1 flannel-v6.1 kube-ipvs0 flannel-wg flannel-wg-v6 vxlan.calico; do ip link delete "$link" 2>/dev/null || true; done
+          ip link show 2>/dev/null | awk -F': ' '/^[0-9]+: cali/ {print $2}' | cut -d@ -f1 | xargs -r -n1 ip link delete 2>/dev/null || true
+          systemctl daemon-reload 2>/dev/null || true
+          set -e
+        }
+        cleanup_existing_kubernetes
+        # Detect containerized host (LXC/OrbStack/Docker) and pick a safe snapshotter.
+        EXTRA=""
+        virt="$(systemd-detect-virt 2>/dev/null || echo unknown)"
+        case "$virt" in
+          lxc|lxc-libvirt|docker|podman|container-other|openvz|systemd-nspawn)
+            EXTRA="--snapshotter=native" ;;
+        esac
+        # Also force native if overlayfs-on-overlayfs is detected
+        if [ -z "$EXTRA" ] && grep -qE 'overlay .* overlay' /proc/mounts 2>/dev/null; then
+          if mount | awk '$3=="/var/lib" || $3=="/" {print $5}' | grep -q overlay; then
+            EXTRA="--snapshotter=native"
+          fi
+        fi
+        attempt=0; max=3
+        while [ $attempt -lt $max ]; do
+          attempt=$((attempt+1))
+          echo "[k3s-bootstrap] attempt $attempt/$max (extra=$EXTRA)"
+          if curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL="stable" K3S_TOKEN='{{ k3s_token }}' sh -s - server --disable=traefik --cluster-cidr=10.42.0.0/16 --service-cidr=10.43.0.0/16 --cluster-dns=10.43.0.10 --write-kubeconfig-mode=0640 --node-name=k3s-server-1 --node-ip=10.0.0.10 $EXTRA; then
+            systemctl is-active --quiet k3s && exit 0
+          fi
+          echo '[k3s-bootstrap] k3s failed to start — dumping diagnostics:'
+          systemctl status k3s --no-pager -l 2>&1 | tail -n 40 || true
+          journalctl -xeu k3s --no-pager 2>&1 | tail -n 80 || true
+          echo '[k3s-bootstrap] cleaning up before retry'
+          cleanup_existing_kubernetes
+          # On second attempt, force native snapshotter regardless of detection
+          EXTRA="--snapshotter=native"
+          sleep 10
+        done
+        echo '[k3s-bootstrap] exhausted retries'
+        exit 1
+      args:
+        executable: /bin/bash
+
+    - name: Wait for k3s API to be reachable on first server
+      ansible.builtin.wait_for:
+        host: "{{ inventory_hostname }}"
+        port: 6443
+        timeout: 300
+
+    - name: Wait for node-token file
+      ansible.builtin.wait_for:
+        path: /var/lib/rancher/k3s/server/node-token
+        timeout: 180
+
+    - name: Read node-token
+      ansible.builtin.slurp:
+        src: /var/lib/rancher/k3s/server/node-token
+      register: k3s_node_token_b64
+
+    - name: Publish join facts
+      ansible.builtin.set_fact:
+        k3s_node_token: "{{ k3s_node_token_b64.content | b64decode | trim }}"
+        k3s_server_url: "https://10.0.0.10:6443"
+
+    - name: Wait for first server node Ready
+      ansible.builtin.shell: |
+        set +e
+        # Force k3s kubectl to use the k3s-generated kubeconfig. A stale
+        # /root/.kube/config or KUBECONFIG env from a previous kubeadm/k3s
+        # install would otherwise cause x509 certificate signed by unknown authority.
+        unset KUBECONFIG
+        export KUBECONFIG=/etc/rancher/k3s/k3s.yaml
+        KUBECTL='/usr/local/bin/k3s kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml'
+        expected="{{ _node_names[inventory_hostname] }}"
+        node_ip="{{ inventory_hostname }}"
+        nodes="$($KUBECTL get nodes -o wide --no-headers 2>/tmp/k3s-nodes.err)"
+        rc=$?
+        if [ $rc -ne 0 ]; then
+          echo "[first-ready] kubectl failed rc=$rc"
+          cat /tmp/k3s-nodes.err 2>/dev/null || true
+          systemctl status k3s --no-pager -l 2>&1 | tail -n 25 || true
+          journalctl -u k3s --no-pager 2>&1 | tail -n 40 || true
+          exit 1
+        fi
+        printf '%s\n' "$nodes"
+        status="$(printf '%s\n' "$nodes" | awk -v n="$expected" '$1==n {print $2; exit}')"
+        if [ "$status" != "Ready" ]; then
+          status="$(printf '%s\n' "$nodes" | awk -v ip="$node_ip" '$6==ip {print $2; exit}')"
+        fi
+        if [ "$status" = "Ready" ]; then
+          echo READY
+          exit 0
+        fi
+        echo "[first-ready] expected node '$expected' at IP '$node_ip' is not Ready yet (status=${status:-missing})"
+        $KUBECTL get pods -A -o wide 2>/dev/null | tail -n 30 || true
+        journalctl -u k3s --no-pager 2>&1 | tail -n 30 || true
+        exit 1
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: k3s_first_ready
+      changed_when: false
+      retries: 45
+      delay: 10
+      until: k3s_first_ready.rc == 0
+
+- name: Join k3s agents
+  hosts: 10.0.0.20,
+  become: true
+  gather_facts: false
+  any_errors_fatal: false
+  vars:
+    k3s_token: "change-me-please"
+    k3s_server_url: "https://10.0.0.10:6443"
+    _node_users:
+      10.0.0.20: root
+    _node_ports:
+      10.0.0.20: 22
+    _node_names:
+      10.0.0.20: "k3s-agent-1"
+  pre_tasks:
+    - name: Apply per-host SSH connection settings
+      ansible.builtin.set_fact:
+        ansible_user: "{{ _node_users[inventory_hostname] | default(ansible_user) }}"
+        ansible_port: "{{ _node_ports[inventory_hostname] | default(ansible_port | default(22)) }}"
+  tasks:
+    - name: Install k3s agent (with retry)
+      ansible.builtin.shell: |
+        set -o pipefail
+        EXTRA=""
+        virt="$(systemd-detect-virt 2>/dev/null || echo unknown)"
+        case "$virt" in lxc|lxc-libvirt|docker|podman|container-other|openvz|systemd-nspawn) EXTRA="--snapshotter=native" ;; esac
+        attempt=0; max=5
+        while [ $attempt -lt $max ]; do
+          attempt=$((attempt+1))
+          echo "[join-agent] attempt $attempt/$max (extra=$EXTRA)"
+          if curl -sfL https://get.k3s.io | INSTALL_K3S_CHANNEL="stable" K3S_TOKEN='{{ k3s_token }}' K3S_URL='{{ k3s_server_url }}' sh -s - agent --node-name={{ _node_names[inventory_hostname] }} --node-ip={{ inventory_hostname }} $EXTRA; then
+            systemctl is-active --quiet k3s-agent && exit 0
+          fi
+          echo '[join-agent] failed, dumping diagnostics + cleaning up'
+          journalctl -xeu k3s-agent --no-pager 2>&1 | tail -n 60 || true
+          if [ -x /usr/local/bin/k3s-agent-uninstall.sh ]; then /usr/local/bin/k3s-agent-uninstall.sh || true; fi
+          rm -rf /etc/rancher/k3s /var/lib/rancher/k3s /run/k3s /var/lib/kubelet || true
+          EXTRA="--snapshotter=native"
+          sleep 15
+        done
+        echo '[join-agent] exhausted retries'
+        exit 1
+      args:
+        executable: /bin/bash
+        creates: /usr/local/bin/k3s
+
+- name: Post-install verification and add-ons
+  hosts: 10.0.0.10,
+  become: true
+  gather_facts: false
+  vars:
+    _node_users:
+      10.0.0.10: root
+    _node_ports:
+      10.0.0.10: 22
+    _node_names:
+      10.0.0.10: "k3s-server-1"
+  pre_tasks:
+    - name: Apply per-host SSH connection settings
+      ansible.builtin.set_fact:
+        ansible_user: "{{ _node_users[inventory_hostname] | default(ansible_user) }}"
+        ansible_port: "{{ _node_ports[inventory_hostname] | default(ansible_port | default(22)) }}"
+  tasks:
+    - name: Wait for all nodes to register (Ready)
+      ansible.builtin.shell: |
+        /usr/local/bin/k3s kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml get nodes --no-headers | awk '{print $2}' | grep -c '^Ready$' || true
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: k3s_ready_count
+      changed_when: false
+      retries: 60
+      delay: 10
+      until: (k3s_ready_count.stdout | default('0') | int) >= 2
+      failed_when: false
+
+    - name: Show cluster nodes
+      ansible.builtin.command: /usr/local/bin/k3s kubectl --kubeconfig=/etc/rancher/k3s/k3s.yaml get nodes -o wide
+      environment:
+        KUBECONFIG: /etc/rancher/k3s/k3s.yaml
+      register: k3s_nodes_out
+      changed_when: false
+      failed_when: false
+
+    - name: Display node listing
+      ansible.builtin.debug:
+        msg: "{{ k3s_nodes_out.stdout_lines | default([]) }}"
+
+    - name: Read kubeconfig from first server
+      ansible.builtin.slurp:
+        src: /etc/rancher/k3s/k3s.yaml
+      register: k3s_kubeconfig_b64
+
+    - name: Ensure local ~/.kube exists
+      ansible.builtin.file:
+        path: "{{ lookup('env', 'HOME') }}/.kube"
+        state: directory
+        mode: '0700'
+      delegate_to: localhost
+      become: false
+      run_once: true
+
+    - name: Write kubeconfig to controller (~/.kube/opensible-k3s.yaml)
+      ansible.builtin.copy:
+        dest: "{{ lookup('env', 'HOME') }}/.kube/opensible-k3s.yaml"
+        mode: '0600'
+        content: '{{ (k3s_kubeconfig_b64.content | b64decode) | replace("127.0.0.1", "10.0.0.10") | replace("default", "opensible-k3s") }}'
+      delegate_to: localhost
+      become: false
+      run_once: true
+
+- name: Install root kubeconfig on all server nodes
+  hosts: 10.0.0.10,
+  become: true
+  gather_facts: false
+  vars:
+    _node_users:
+      10.0.0.10: root
+    _node_ports:
+      10.0.0.10: 22
+    _node_names:
+      10.0.0.10: "k3s-server-1"
+  pre_tasks:
+    - name: Apply per-host SSH connection settings
+      ansible.builtin.set_fact:
+        ansible_user: "{{ _node_users[inventory_hostname] | default(ansible_user) }}"
+        ansible_port: "{{ _node_ports[inventory_hostname] | default(ansible_port | default(22)) }}"
+  tasks:
+    - name: Wait for /etc/rancher/k3s/k3s.yaml
+      ansible.builtin.wait_for:
+        path: /etc/rancher/k3s/k3s.yaml
+        timeout: 120
+    - name: Refresh /root/.kube/config from k3s
+      ansible.builtin.shell: |
+        set -e
+        install -d -m 0700 /root/.kube
+        cp -f /etc/rancher/k3s/k3s.yaml /root/.kube/config
+        chmod 0600 /root/.kube/config
+        chown root:root /root/.kube/config
+        if ! grep -q 'KUBECONFIG=/root/.kube/config' /root/.bashrc 2>/dev/null; then
+          echo 'export KUBECONFIG=/root/.kube/config' >> /root/.bashrc
+        fi
+      changed_when: false

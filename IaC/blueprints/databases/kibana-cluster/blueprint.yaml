@@ -1,0 +1,41 @@
+id: kibana-cluster
+name: Kibana HA (Docker cluster)
+group: databases
+category: Search & Analytics
+description: >-
+  Multi-node Kibana deployment running the official Kibana Docker image.
+  Every node runs one container managed by a dedicated systemd unit
+  (kibana-docker.service), all pointing at the same Elasticsearch
+  backend via ELASTICSEARCH_HOSTS so they can be freely load-balanced.
+  Ships with a per-node HTTP health dashboard on port 5680 exposing
+  Kibana + upstream Elasticsearch status as HTML and JSON.
+logo: https://cdn.simpleicons.org/kibana/005571
+tags: [kibana, elastic, docker, cluster, ha, observability]
+author: opensible
+stars: 21
+source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/databases/kibana-cluster
+requires:
+  ansible: ">=2.14"
+entrypoint: playbook.yml
+variables:
+  cluster_id: opensible-kibana
+  kibana_version: "8.15.3"
+  http_port: 5601
+  server_publicBaseUrl: ""
+  health_http_enabled: true
+  health_http_port: 5680
+  elasticsearch_hosts: "http://10.0.0.11:9200,http://10.0.0.12:9200,http://10.0.0.13:9200"
+  security_enabled: false
+  elasticsearch_username: kibana_system
+  elasticsearch_password: ""
+  elasticsearch_ssl_verificationMode: full
+  elasticsearch_requestTimeout: 300000
+  elasticsearch_pingTimeout: 60000
+  elasticsearch_shardTimeout: 120000
+  elasticsearch_sniffOnStart: false
+  kibana_lightweight_mode: true
+  task_manager_maxWorkers: 5
+  task_manager_pollInterval: 10000
+  encryption_key: ""
+  open_firewall: true
+  become: true

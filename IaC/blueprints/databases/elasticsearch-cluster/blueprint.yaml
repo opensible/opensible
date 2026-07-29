@@ -1,0 +1,32 @@
+id: elasticsearch-cluster
+name: Elasticsearch HA (Docker cluster)
+group: databases
+category: Search & Analytics
+description: >-
+  Production Elasticsearch cluster across N nodes running the official
+  Elasticsearch Docker image. Each node runs one container managed by a
+  dedicated systemd unit (elasticsearch-docker.service); cluster
+  formation via discovery.seed_hosts and cluster.initial_master_nodes.
+  Ships with a per-node HTTP health dashboard on port 9280 exposing
+  cluster + node + index status as HTML and JSON.
+logo: https://cdn.simpleicons.org/elasticsearch/005571
+tags: [elasticsearch, elastic, docker, cluster, ha, search]
+author: opensible
+stars: 34
+source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/databases/elasticsearch-cluster
+requires:
+  ansible: ">=2.14"
+entrypoint: playbook.yml
+variables:
+  cluster_id: opensible-es
+  es_version: "8.15.3"
+  http_port: 9200
+  transport_port: 9300
+  health_http_enabled: true
+  health_http_port: 9280
+  security_enabled: false
+  elastic_password: ""
+  heap_size: 1g
+  data_dir: /var/lib/elasticsearch-data
+  open_firewall: true
+  become: true

@@ -1,0 +1,14 @@
+id: uninstall-victoriametrics
+name: Uninstall — VictoriaMetrics (systemd)
+templateId: uninstall-stack
+description: >-
+  Stop victoriametrics.service, remove
+  /usr/local/bin/victoria-metrics-prod, /srv/metrics data and the
+  victoriametrics system user.
+defaults:
+  stack: victoriametrics
+  purge_data: true
+  remove_packages: false
+  flush_iptables: false
+  reboot_after: false
+  become: true

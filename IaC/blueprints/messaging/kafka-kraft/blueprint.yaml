@@ -1,0 +1,34 @@
+id: kafka-kraft
+name: Apache Kafka (KRaft Cluster)
+group: messaging
+category: Streaming
+description: >-
+  Production-grade Apache Kafka cluster in KRaft mode (no ZooKeeper) installed
+  from the official Apache tarball and managed by systemd. No Docker, no
+  Bitnami. Each host is a combined controller+broker; node IDs, quorum
+  voters and advertised listeners are computed from the inventory.
+logo: https://cdn.simpleicons.org/apachekafka/231F20
+tags: [kafka, kraft, systemd, streaming]
+author: opensible
+stars: 76
+source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/messaging/kafka-kraft
+requires:
+  ansible: ">=2.14"
+entrypoint: playbook.yml
+variables:
+  kafka_version: "3.8.1"
+  kafka_scala_version: "2.13"
+  cluster_id: opensible-kafka
+  client_port: 9092
+  controller_port: 9093
+  replication_factor: 3
+  min_insync_replicas: 2
+  num_partitions: 6
+  auto_create_topics: false
+  log_retention_hours: 168
+  heap_opts: "-Xms1G -Xmx1G"
+  install_dir: /opt/kafka
+  data_dir: /var/lib/kafka/data
+  log_dir: /var/log/kafka
+  open_firewall: true
+  become: true

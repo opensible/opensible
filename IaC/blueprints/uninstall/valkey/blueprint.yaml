@@ -1,0 +1,12 @@
+id: uninstall-valkey
+name: Uninstall — Valkey + Sentinel
+templateId: uninstall-stack
+description: >-
+  Stop valkey-server and valkey-sentinel, purge packages, remove /etc/valkey,
+  /var/lib/valkey, /var/log/valkey and the valkey system user.
+defaults:
+  stack: valkey
+  purge_data: true
+  remove_packages: true
+  flush_iptables: false
+  reboot_after: false

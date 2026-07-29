@@ -1,0 +1,13 @@
+id: uninstall-grafana
+name: Uninstall — Grafana OSS
+templateId: uninstall-stack
+description: >-
+  Stop grafana-server, purge the Grafana apt/dnf repo + package, and
+  remove /etc/grafana, /var/lib/grafana and /var/log/grafana.
+defaults:
+  stack: grafana
+  purge_data: true
+  remove_packages: true
+  flush_iptables: false
+  reboot_after: false
+  become: true

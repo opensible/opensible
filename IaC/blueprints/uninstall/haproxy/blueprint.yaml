@@ -1,0 +1,14 @@
+id: uninstall-haproxy
+name: Uninstall — HAProxy Load Balancer
+templateId: uninstall-stack
+description: >-
+  Stop haproxy + keepalived, kill leftover processes, purge packages and
+  remove /etc/haproxy, /var/lib/haproxy, /run/haproxy, /var/log/haproxy*
+  and /etc/keepalived.
+defaults:
+  stack: haproxy
+  purge_data: true
+  remove_packages: true
+  flush_iptables: false
+  reboot_after: false
+  become: true

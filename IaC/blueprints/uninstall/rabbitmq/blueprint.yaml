@@ -1,0 +1,14 @@
+id: uninstall-rabbitmq
+name: Uninstall — RabbitMQ Cluster
+templateId: uninstall-stack
+description: >-
+  Stop rabbitmq-server + epmd, kill leftover beam processes, purge
+  packages, remove /etc/rabbitmq, /var/lib/rabbitmq, /var/log/rabbitmq
+  and the Erlang cookie.
+defaults:
+  stack: rabbitmq
+  purge_data: true
+  remove_packages: true
+  flush_iptables: false
+  reboot_after: false
+  become: true

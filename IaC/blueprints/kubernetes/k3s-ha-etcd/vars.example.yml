@@ -1,0 +1,29 @@
+---
+cluster_name: opensible-k3s
+cluster_token: "change-me-please"
+k3s_version: v1.30.4+k3s1
+
+ha_mode: false
+control_plane_endpoint: ""    # VIP/DNS when ha_mode is true
+
+disable_traefik: true
+disable_servicelb: false
+disable_local_storage: false
+disable_network_policy: false
+
+flannel_backend: vxlan
+cluster_cidr: 10.42.0.0/16
+service_cidr: 10.43.0.0/16
+cluster_dns: 10.43.0.10
+
+install_longhorn: false
+longhorn_replica_count: 3
+
+reset_existing_cluster: true
+open_firewall: true
+fetch_kubeconfig: true
+
+servers:
+  - { name: k3s-server-1, ip: 10.0.0.10 }
+agents:
+  - { name: k3s-agent-1,  ip: 10.0.0.20 }

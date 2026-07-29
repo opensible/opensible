@@ -1,0 +1,15 @@
+id: cicd-git-build-deploy
+name: CI/CD Pipeline (Git → Build → Push → Deploy)
+group: cicd
+category: CI/CD
+description: >-
+  End-to-end container CI/CD from a Git repo (GitHub / GitLab / Gitea /
+  Forgejo) to any OCI registry (Harbor, Sonatype Nexus, Zot, Docker Hub,
+  GHCR, GitLab Registry). Builds with docker buildx, pushes tagged images,
+  and can optionally SSH into a target host to roll the container using
+  docker run or docker compose up -d.
+logo: https://cdn.simpleicons.org/githubactions/2088FF
+tags: [cicd, docker, git, registry, harbor, nexus, zot, deploy]
+author: opensible
+stars: 12
+entrypoint: playbook.yml

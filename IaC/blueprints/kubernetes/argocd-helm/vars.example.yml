@@ -1,0 +1,35 @@
+---
+# Helm release
+release: argocd
+namespace: argocd
+create_namespace: true
+
+# Chart source
+chart: argo/argo-cd
+repo_name: argo
+repo_url: https://argoproj.github.io/argo-helm
+chart_version: ""          # empty = latest stable
+
+# Cluster access on the Ansible target host
+kubeconfig: /etc/rancher/k3s/k3s.yaml   # or /root/.kube/config for kubeadm
+kube_context: ""
+
+# Wait for all Argo CD components to become Ready
+wait: true
+
+# Inline values.yaml — override server.ingress, sso, HA, etc.
+values: |
+  global:
+    domain: argocd.example.com
+  server:
+    service:
+      type: ClusterIP
+    ingress:
+      enabled: false
+  configs:
+    params:
+      server.insecure: "true"
+  dex:
+    enabled: false
+  notifications:
+    enabled: false

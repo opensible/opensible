@@ -1,0 +1,12 @@
+id: uninstall-kibana
+name: Uninstall — Kibana (Docker cluster)
+templateId: uninstall-stack
+description: >-
+  Stop kibana-docker.service on every node, remove the Kibana container and
+  image, delete /var/lib/kibana and the per-node health dashboard unit.
+defaults:
+  stack: kibana
+  purge_data: true
+  remove_packages: true
+  flush_iptables: false
+  reboot_after: false

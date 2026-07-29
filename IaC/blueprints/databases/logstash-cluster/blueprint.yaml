@@ -1,0 +1,38 @@
+id: logstash-cluster
+name: Logstash HA (Docker cluster)
+group: databases
+category: Search & Analytics
+description: >-
+  Multi-node Logstash deployment running the official Logstash Docker image.
+  Every node runs one container managed by a dedicated systemd unit
+  (logstash-docker.service), sharing the same pipeline configuration and
+  writing to the same Elasticsearch backend. Ships with a default
+  beats-in / elasticsearch-out pipeline and a per-node HTTP health
+  dashboard on port 9680 exposing Logstash node + pipeline stats and
+  upstream Elasticsearch reachability.
+logo: https://cdn.simpleicons.org/logstash/005571
+tags: [logstash, elastic, docker, cluster, ha, pipeline, ingest]
+author: opensible
+stars: 18
+source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/databases/logstash-cluster
+requires:
+  ansible: ">=2.14"
+entrypoint: playbook.yml
+variables:
+  cluster_id: opensible-logstash
+  logstash_version: "8.15.3"
+  beats_port: 5044
+  http_api_port: 9600
+  health_http_enabled: true
+  health_http_port: 9680
+  elasticsearch_hosts: "http://10.0.0.11:9200,http://10.0.0.12:9200,http://10.0.0.13:9200"
+  security_enabled: false
+  elasticsearch_username: elastic
+  elasticsearch_password: ""
+  elasticsearch_ssl_verificationMode: full
+  pipeline_workers: 2
+  pipeline_batch_size: 125
+  heap_size: "1g"
+  index_pattern: "logs-%{+YYYY.MM.dd}"
+  open_firewall: true
+  become: true

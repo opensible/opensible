@@ -1,0 +1,32 @@
+# Example variables for postgres-patroni.
+# Fill superuser_password and replication_password before running.
+cluster_id: opensible-pg
+pg_version: "16"
+ssh_user_default: root
+ssh_port_default: 22
+nodes:
+  - { name: pg-1, ip: 10.0.0.11, ssh_user: root, ssh_port: 22 }
+  - { name: pg-2, ip: 10.0.0.12, ssh_user: root, ssh_port: 22 }
+  - { name: pg-3, ip: 10.0.0.13, ssh_user: root, ssh_port: 22 }
+listen_address: 0.0.0.0
+pg_port: 5432
+patroni_rest_port: 8008
+etcd_client_port: 2379
+etcd_peer_port: 2380
+superuser_password: change-me-strong
+replication_password: change-me-strong
+rewind_password: ""
+synchronous_mode: false
+maximum_lag_on_failover: 1048576
+ttl: 30
+loop_wait: 10
+retry_timeout: 10
+max_connections: 200
+shared_buffers: 256MB
+wal_level: replica
+extra_hba: |
+  # host    all    all    10.0.0.0/8    scram-sha-256
+etcd_version: 3.5.16
+patroni_version: 3.3.2
+open_firewall: true
+become: true

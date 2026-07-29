@@ -1,0 +1,12 @@
+id: uninstall-docker
+name: Uninstall — Docker Engine
+templateId: uninstall-stack
+description: >-
+  Stop docker + containerd, remove all containers, purge docker-ce packages
+  and delete /var/lib/docker & /var/lib/containerd.
+defaults:
+  stack: docker
+  purge_data: true
+  remove_packages: true
+  flush_iptables: false
+  reboot_after: false

@@ -1,0 +1,33 @@
+---
+# Example variable overrides for the elasticsearch-cluster blueprint.
+# Copy into your project and adjust before running the playbook.
+
+cluster_id: opensible-es
+es_version: "8.15.3"
+
+# Networking
+http_port: 9200
+transport_port: 9300
+announce_host: "{{ ansible_host | default(inventory_hostname) }}"
+
+# Per-node HTTP health dashboard (HTML + /health.json + /live).
+health_http_enabled: true
+health_http_port: 9280
+
+# X-Pack basic security. Turn on for anything reachable outside a
+# trusted network; provide a strong password (ideally via ansible-vault).
+security_enabled: false
+elastic_password: ""
+
+# JVM + storage
+heap_size: 1g                 # -Xms/-Xmx; 50% of RAM, cap 31g
+data_dir: /var/lib/elasticsearch-data
+
+# Cluster members. First entry seeds the initial master set.
+nodes:
+  - { name: es-1, ip: 10.0.0.11, ssh_user: root, ssh_port: 22 }
+  - { name: es-2, ip: 10.0.0.12, ssh_user: root, ssh_port: 22 }
+  - { name: es-3, ip: 10.0.0.13, ssh_user: root, ssh_port: 22 }
+
+open_firewall: true
+become: true

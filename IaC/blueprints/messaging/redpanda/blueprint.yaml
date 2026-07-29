@@ -1,0 +1,33 @@
+id: redpanda-cluster
+name: Redpanda Cluster (Self-Managed) + Console
+group: messaging
+category: Streaming
+description: >-
+  Production-grade Redpanda Self-Managed cluster installed from the official
+  Redpanda apt/dnf repo on systemd (no Docker, no Bitnami). Kafka-API
+  compatible. One host = dev, 3+ = HA. Redpanda Console (web UI) is
+  deployed on the first broker.
+logo: https://cdn.simpleicons.org/redpanda/E9165A
+tags: [redpanda, kafka-api, streaming, systemd, ha, console]
+author: opensible
+stars: 32
+source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/messaging/redpanda
+requires:
+  ansible: ">=2.14"
+entrypoint: playbook.yml
+variables:
+  cluster_id: opensible-redpanda
+  redpanda_channel: redpanda
+  kafka_port: 9092
+  rpc_port: 33145
+  admin_port: 9644
+  schema_registry_port: 8081
+  pandaproxy_port: 8082
+  console_enabled: true
+  console_port: 8080
+  developer_mode: false
+  seastar_smp: 0
+  seastar_memory: "0"
+  data_dir: /var/lib/redpanda/data
+  open_firewall: true
+  become: true

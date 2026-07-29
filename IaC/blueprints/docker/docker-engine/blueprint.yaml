@@ -1,0 +1,17 @@
+id: docker-engine
+name: Docker Engine
+group: docker
+category: Containers
+description: Install and harden Docker Engine with buildx and compose plugin.
+logo: https://cdn.simpleicons.org/docker/2496ED
+tags: [docker, engine]
+author: opensible
+stars: 82
+source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/docker/docker-engine
+requires:
+  ansible: ">=2.14"
+entrypoint: playbook.yml
+variables:
+  docker_user: ubuntu
+  enable_buildx: true
+  become: true

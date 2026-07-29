@@ -1,0 +1,7 @@
+---
+# User added to the docker group so they can run docker without sudo.
+docker_user: ubuntu
+# Install docker-buildx-plugin alongside the compose plugin.
+enable_buildx: true
+# Elevate to root via sudo.
+become: true

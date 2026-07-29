@@ -1,0 +1,14 @@
+id: uninstall-traefik
+name: Uninstall — Traefik Reverse Proxy / LB
+templateId: uninstall-stack
+description: >-
+  Stop traefik + keepalived, remove the /usr/local/bin/traefik binary and
+  systemd unit, and purge /etc/traefik, /var/lib/traefik, /var/log/traefik
+  and /etc/keepalived.
+defaults:
+  stack: traefik
+  purge_data: true
+  remove_packages: true
+  flush_iptables: false
+  reboot_after: false
+  become: true

@@ -1,0 +1,13 @@
+id: uninstall-logstash
+name: Uninstall — Logstash (Docker cluster)
+templateId: uninstall-stack
+description: >-
+  Stop logstash-docker.service on every node, remove the Logstash container
+  and image, delete /etc/logstash, /var/lib/logstash and the per-node health
+  dashboard unit.
+defaults:
+  stack: logstash
+  purge_data: true
+  remove_packages: true
+  flush_iptables: false
+  reboot_after: false

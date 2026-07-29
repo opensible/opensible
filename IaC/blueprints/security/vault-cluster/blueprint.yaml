@@ -1,0 +1,37 @@
+id: vault-cluster
+name: HashiCorp Vault HA (Docker cluster)
+group: security
+category: Secrets
+description: >-
+  Production HashiCorp Vault HA cluster across N nodes running the official
+  hashicorp/vault Docker image with integrated Raft storage. Each node runs
+  one container managed by a dedicated systemd unit (vault-docker.service);
+  followers auto-join via retry_join. Optional first-run auto-init and
+  persistent auto-unseal via a host-side systemd oneshot + timer keep the
+  cluster unsealed across reboots.
+logo: https://cdn.simpleicons.org/vault/FFEC6E
+tags: [vault, hashicorp, secrets, docker, cluster, ha, raft]
+author: opensible
+stars: 12
+source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/security/vault-cluster
+requires:
+  ansible: ">=2.14"
+entrypoint: playbook.yml
+variables:
+  cluster_id: opensible-vault
+  vault_version: "1.18.1"
+  api_port: 8200
+  cluster_port: 8201
+  tls_disable: true
+  tls_cert_file: /etc/vault/tls/tls.crt
+  tls_key_file: /etc/vault/tls/tls.key
+  data_dir: /var/lib/vault-data
+  ui: true
+  disable_mlock: true
+  log_level: info
+  auto_init: true
+  health_http_enabled: true
+  health_http_port: 8280
+  open_firewall: true
+  become: true
+

@@ -1,0 +1,43 @@
+---
+# Example variable overrides for the logstash-cluster blueprint.
+# Copy into your project and adjust before running the playbook.
+
+cluster_id: opensible-logstash
+logstash_version: "8.15.3"
+
+# Networking
+beats_port: 5044          # Filebeat / Metricbeat input
+http_api_port: 9600       # Logstash monitoring API (localhost by default)
+
+# Per-node HTTP health dashboard (HTML + /health.json + /live).
+health_http_enabled: true
+health_http_port: 9680
+
+# Upstream Elasticsearch cluster. Full URLs of every ES node — Logstash
+# load-balances across them and follows failovers automatically.
+elasticsearch_hosts:
+  - "http://10.0.0.11:9200"
+  - "http://10.0.0.12:9200"
+  - "http://10.0.0.13:9200"
+
+# When Elasticsearch runs with xpack.security.enabled=true, provide the
+# credentials Logstash should use. Store the password in an ansible-vault file.
+security_enabled: false
+elasticsearch_username: elastic
+elasticsearch_password: ""
+elasticsearch_ssl_verificationMode: full  # full | certificate | none
+
+# Pipeline tuning
+pipeline_workers: 2
+pipeline_batch_size: 125
+heap_size: "1g"
+index_pattern: "logs-%{+YYYY.MM.dd}"
+
+# Logstash nodes. Add 2+ and put a load balancer / DNS round-robin
+# in front for real HA (Beats clients accept a list of Logstash hosts).
+nodes:
+  - { name: logstash-1, ip: 10.0.0.31, ssh_user: root, ssh_port: 22 }
+  - { name: logstash-2, ip: 10.0.0.32, ssh_user: root, ssh_port: 22 }
+
+open_firewall: true
+become: true

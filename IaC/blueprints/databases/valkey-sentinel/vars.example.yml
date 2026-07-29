@@ -1,0 +1,30 @@
+---
+# Example variables for the Valkey + Sentinel blueprint.
+flavor: valkey
+cluster_id: opensible-valkey
+primary_name: mymaster
+
+# 3 nodes recommended for real HA. First entry is the initial primary.
+nodes:
+  - { name: valkey-1, ip: 10.0.0.11, ssh_user: root, ssh_port: 22 }
+  - { name: valkey-2, ip: 10.0.0.12, ssh_user: root, ssh_port: 22 }
+  - { name: valkey-3, ip: 10.0.0.13, ssh_user: root, ssh_port: 22 }
+
+bind: 0.0.0.0
+port: 6379
+sentinel_port: 26379
+
+# Set a strong password to enable auth (requirepass + masterauth + sentinel auth-pass).
+requirepass: ""
+
+quorum: 2
+down_after_ms: 5000
+failover_timeout_ms: 10000
+parallel_syncs: 1
+
+maxmemory: ""
+maxmemory_policy: noeviction
+appendonly: true
+
+open_firewall: true
+become: true
