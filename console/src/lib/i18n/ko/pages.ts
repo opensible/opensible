@@ -1,0 +1,127 @@
+export const pages: Record<string, string> = {
+  "page.home.title": "홈 대시보드",
+  "page.home.subtitle": "프로젝트, 클라우드 프로비저닝 및 인프라 자동화 전반 개요.",
+
+  "page.settings.title": "프로젝트 설정",
+  "page.settings.subtitle": "Ansible 리포지토리 워크스페이스(roles, playbooks, inventories, ansible.cfg)의 Git 소스 구성.",
+
+  "page.cost.title": "비용 분석",
+  "page.cost.subtitle": "프로바이더 가격 관리, 프로비저닝 비용 예측, Apply별 비용 리포트 검토.",
+  "page.cost.compute": "컴퓨트",
+  "page.cost.storage": "스토리지",
+  "page.cost.network": "네트워크",
+  "page.cost.managed": "관리형 서비스",
+
+  "page.cloudSettings.title": "스택 프로젝트 설정",
+  "page.cloudSettings.subtitle": "Cloud Provisioning에서 사용하는 OpenTofu/Terraform 스택 워크스페이스의 Git 소스 구성.",
+
+  "page.summary.title": "프로비저닝 요약",
+  "page.summary.subtitle": "이 프로젝트의 모든 스택에서 실행된 OpenTofu/Terraform.",
+
+  "page.deployment.title": "배포",
+  "page.deployment.subtitle": "이 프로젝트의 Ansible 배포 실행.",
+
+  "page.hosts.title": "호스트 & 그룹",
+  "page.hosts.subtitle": "Ansible 인벤토리, 그룹, 호스트 및 변수 관리.",
+
+  "page.playbooks.title": "플레이북",
+  "page.playbooks.subtitle": "배포 및 오케스트레이션을 위한 재사용 가능한 Ansible 플레이북.",
+  "page.playbooks.subtitleCount": "이 프로젝트의 플레이북 {count}개.",
+
+  "page.roles.title": "역할",
+  "page.roles.subtitle": "pack별로 정리된 재사용 가능한 Ansible 역할 및 작업.",
+  "page.playbooksRoles.title": "플레이북 & 역할",
+  "page.playbooksRoles.subtitle": "재사용 가능한 Ansible 플레이북과 역할을 한 곳에서 관리하세요.",
+
+
+  "page.templates.title": "작업 & 템플릿",
+  "page.templates.subtitle": "재사용 가능한 Build & Deployment 작업 — 라이프사이클 액션(Init, Validate, Plan, Apply)이 있는 매개변수화된 템플릿 실행.",
+
+  "page.vaults.title": "볼트 & 시크릿",
+  "page.vaults.subtitle": "ansible-vault 키 관리, 인벤토리의 암호화 파일 검사, Ansible 실행에 사용되는 SSH 키/비밀번호 저장.",
+
+  "page.api.title": "API",
+  "page.api.subtitle": "플랫폼에 대한 프로그래밍 방식 접근.",
+
+  "page.systemSecrets.title": "시크릿 관리",
+  "page.systemSecrets.subtitle": "전역 암호화 시크릿 — 스택과 프로젝트가 참조하는 SSH 키, 토큰, 자격 증명.",
+
+  "page.serverLogs.title": "서버 로그",
+  "page.serverLogs.subtitle": "백엔드, 워커 및 프론트엔드 로그 실시간 조회.",
+
+  "page.systemSettings.title": "시스템 설정",
+  "page.systemSettings.subtitle": "애플리케이션 기본 설정 및 시스템 옵션.",
+
+  "page.users.title": "사용자 관리",
+  "page.users.subtitle": "사용자, 역할 및 권한 관리.",
+
+  "page.workers.title": "워커",
+  "page.workers.subtitle": "Ansible / OpenTofu 작업을 실행하는 워커 에이전트.",
+
+
+  // Workers page
+  "workers.addWorker": "워커 추가",
+  "workers.agents": "워커 에이전트",
+  "workers.agentsDesc": "등록된 워커 노드 및 하트비트 상태.",
+  "workers.loading": "워커 로딩 중…",
+  "workers.empty": "등록된 워커가 없습니다",
+  "workers.emptyHint": "\"워커 추가\"를 클릭하여 생성하세요",
+
+  // Users page
+  "common.users": "사용자",
+  "users.emptyUsers": "사용자를 찾을 수 없습니다",
+  "users.emptyRolesSearch": "역할을 찾을 수 없습니다",
+  "users.noRoles": "정의된 역할이 없습니다",
+  "users.noPermissions": "권한이 없습니다",
+
+  // Templates / Jobs page
+  "templates.tab.jobs": "빌드 및 배포 작업",
+  "templates.tab.catalog": "리소스 카탈로그",
+  "templates.tab.blueprints": "스택 블루프린트",
+  "templates.tab.jobs.desc": "자동화 작업을 실행하고 모니터링합니다.",
+  "templates.tab.catalog.desc": "재사용 가능한 인프라 리소스 및 구성을 관리합니다.",
+  "templates.tab.blueprints.desc": "커뮤니티에서 재사용 가능한 배포 템플릿을 찾아봅니다.",
+  "templates.searchTemplates": "템플릿 검색…",
+  "templates.searchJobs": "작업 검색…",
+  "templates.templateJobs": "템플릿 작업",
+  "templates.noMatch": "검색과 일치하는 템플릿이 없습니다.",
+
+  // Vaults & Secrets
+  "vaults.tab.keys": "Vault 키",
+  "vaults.tab.files": "암호화된 파일",
+  "vaults.tab.secrets": "머신 시크릿",
+  "vaults.card.vaults": "Vaults",
+  "vaults.card.vaultKeys": "Vault 키",
+  "vaults.noKeys": "구성된 키가 없습니다.",
+  "vaults.vaultId": "Vault ID",
+  "vaults.path": "경로",
+  "vaults.vault": "Vault",
+  "vaults.noEncrypted": "인벤토리 저장소에서 암호화된 파일이 감지되지 않았습니다.",
+  "vaults.noSecrets": "시크릿을 찾을 수 없습니다.",
+
+  // Cost analysis
+  "cost.providers": "공급자",
+  "cost.loadingPricing": "가격 정보 로딩 중…",
+  "cost.step1": "1단계 · 소스 및 공급자",
+  "cost.step2": "2단계 · 인프라 리소스",
+  "cost.provider": "공급자",
+  "cost.resourceSource": "리소스 소스",
+  "cost.stack": "스택",
+  "cost.pastePlan": "OpenTofu/Terraform plan JSON 붙여넣기",
+  "cost.costByService": "서비스별 비용",
+  "cost.monthlyByResource": "리소스별 월별 비용",
+  "cost.detailedBreakdown": "상세 비용 내역",
+  "cost.autoSaved": "Apply 성공 후 자동 저장",
+  "cost.resource": "리소스",
+  "cost.kind": "종류",
+  "cost.unit": "단위",
+  "cost.unitPrice": "단가",
+  "cost.monthly": "월별",
+  "cost.yearly": "연별",
+  "cost.total": "합계",
+  "cost.noResources": "리소스 없음 — 시작하려면 \"리소스 추가\"를 클릭하세요.",
+  "cost.selectStack": "스택 선택…",
+  "cost.allStacks": "모든 스택",
+  "cost.allProviders": "모든 공급자",
+  "cost.from": "부터",
+};

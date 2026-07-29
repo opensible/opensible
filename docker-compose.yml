@@ -1,0 +1,60 @@
+services:
+  opensible-server:
+    image: docker.io/ossopensible/opensible-server:latest
+    container_name: opensible-server
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    volumes:
+      - opensible-data:/app/data
+    environment:
+      TZ: Asia/Phnom_Penh
+      FLASK_ENV: production
+      DATA_DIR: /app/data
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-${JWT_SECRET}}
+      JWT_SECRET: ${JWT_SECRET:-${JWT_SECRET_KEY}}
+      INTERNAL_CALL_SECRET: ${INTERNAL_CALL_SECRET}
+      GLOBAL_SECRETS_ENCRYPTION_KEY: ${GLOBAL_SECRETS_ENCRYPTION_KEY}
+      WORKER_REGISTRATION_SECRET: ${WORKER_REGISTRATION_SECRET:-}
+      ADMIN_INITIAL_PASSWORD: ${ADMIN_INITIAL_PASSWORD:-}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-https://opensible.example.com}
+
+  opensible-console:
+    image: docker.io/ossopensible/opensible-console:latest
+    container_name: opensible-console
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    environment:
+      TZ: Asia/Phnom_Penh
+      API_URL: ""
+      BACKEND_HOST: opensible-server
+      BACKEND_PORT: "5000"
+    depends_on:
+      - opensible-server
+
+  opensible-worker:
+    image: docker.io/ossopensible/opensible-worker:latest
+    container_name: opensible-worker
+    restart: unless-stopped
+    network_mode: host
+    volumes:
+      - opensible-data:/app/data
+      - ./ssh-keys:/root/.ssh:ro
+    environment:
+      TZ: Asia/Phnom_Penh
+      WORKER_NAME: worker-go
+      WORKER_TAGS: go
+      WORKER_SERVER_URL: http://127.0.0.1:5000
+      WORKER_TOKEN_FILE: /app/data/worker.token
+      DATA_DIR: /app/data
+      WORKER_REGISTRATION_SECRET: ${WORKER_REGISTRATION_SECRET:-}
+      WORKER_MAX_CONCURRENCY: ${WORKER_MAX_CONCURRENCY:-3}
+      VAULT_SERVER_HOST: 127.0.0.1
+      VAULT_SERVER_PORT: 9998
+      VAULT_SERVER_SECRET: ${VAULT_SERVER_SECRET:-}
+    depends_on:
+      - opensible-server
+
+volumes:
+  opensible-data:

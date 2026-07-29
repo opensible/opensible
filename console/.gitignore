@@ -1,0 +1,42 @@
+node_modules
+dist
+.tanstack
+*.local
+.env
+.env.*
+!.env.example
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Runtime data (never commit)
+data/auth/auth.db*
+data/auth/*.migrated-*
+data/auth/users.json
+data/auth/roles.json
+data/auth/permissions.json
+data/global/secrets/.encryption_key
+data/logs/*.log
+
+# Backend local artifacts
+backend/.venv/
+backend/data/
+backend/*.db
+backend/*.db-journal
+backend/logs/

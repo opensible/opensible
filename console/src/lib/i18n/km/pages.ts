@@ -1,0 +1,127 @@
+export const pages: Record<string, string> = {
+  "page.home.title": "ផ្ទាំងគ្រប់គ្រងដើម",
+  "page.home.subtitle": "ទិដ្ឋភាពសង្ខេបនៃគម្រោង ការផ្តល់ Cloud និងស្វ័យប្រវត្តិកម្មហេដ្ឋារចនាសម្ព័ន្ធរបស់អ្នក។",
+
+  "page.settings.title": "ការកំណត់គម្រោង",
+  "page.settings.subtitle": "កំណត់ប្រភព Git សម្រាប់ Ansible repository (roles, playbooks, inventories, ansible.cfg)។",
+
+  "page.cost.title": "វិភាគថ្លៃដើម",
+  "page.cost.subtitle": "គ្រប់គ្រងតម្លៃរបស់ Provider ប៉ាន់ស្មានថ្លៃដើមផ្តល់សេវា និងពិនិត្យរបាយការណ៍ថ្លៃដើមតាម Apply។",
+  "page.cost.compute": "Compute",
+  "page.cost.storage": "Storage",
+  "page.cost.network": "បណ្តាញ",
+  "page.cost.managed": "សេវាគ្រប់គ្រង",
+
+  "page.cloudSettings.title": "ការកំណត់គម្រោង Stack",
+  "page.cloudSettings.subtitle": "កំណត់ប្រភព Git សម្រាប់ workspace របស់ OpenTofu/Terraform stacks ដែលប្រើដោយ Cloud Provisioning។",
+
+  "page.summary.title": "សង្ខេបការផ្តល់សេវា",
+  "page.summary.subtitle": "ការដំណើរការ OpenTofu/Terraform ទូទាំង stack នៅក្នុងគម្រោងនេះ។",
+
+  "page.deployment.title": "ការដាក់ឱ្យដំណើរការ",
+  "page.deployment.subtitle": "ការដំណើរការ Ansible deployment នៅក្នុងគម្រោងនេះ។",
+
+  "page.hosts.title": "Hosts & Groups",
+  "page.hosts.subtitle": "គ្រប់គ្រង Ansible inventories, groups, hosts និង variables។",
+
+  "page.playbooks.title": "Playbooks",
+  "page.playbooks.subtitle": "Playbooks របស់ Ansible ដែលអាចប្រើឡើងវិញសម្រាប់ deployment និង orchestration។",
+  "page.playbooks.subtitleCount": "{count} playbooks នៅក្នុងគម្រោងនេះ។",
+
+  "page.roles.title": "Roles",
+  "page.roles.subtitle": "តួនាទី Ansible ដែលអាចប្រើឡើងវិញ និង tasks តាម pack។",
+  "page.playbooksRoles.title": "Playbooks & Roles",
+  "page.playbooksRoles.subtitle": "គ្រប់គ្រង Playbooks និង Roles របស់ Ansible ដែលអាចប្រើឡើងវិញក្នុងទីតាំងតែមួយ។",
+
+
+  "page.templates.title": "Jobs & Templates",
+  "page.templates.subtitle": "Build & Deployment Jobs ដែលអាចប្រើឡើងវិញ — កែសម្រួលបានតាម template ជាមួយសកម្មភាព (Init, Validate, Plan, Apply)។",
+
+  "page.vaults.title": "Vaults & Secrets",
+  "page.vaults.subtitle": "គ្រប់គ្រង ansible-vault keys ពិនិត្យឯកសារដែលបានអ៊ិនគ្រីប និងរក្សា SSH keys / passwords។",
+
+  "page.api.title": "API",
+  "page.api.subtitle": "ការចូលប្រើប្រព័ន្ធតាមរយៈកម្មវិធី។",
+
+  "page.systemSecrets.title": "Secrets Management",
+  "page.systemSecrets.subtitle": "សម្ងាត់ដែលបានអ៊ិនគ្រីបជាសកល — SSH keys, tokens និងអត្តសញ្ញាណដែលបានប្រើដោយ stacks និងគម្រោង។",
+
+  "page.serverLogs.title": "កំណត់ហេតុម៉ាស៊ីនមេ",
+  "page.serverLogs.subtitle": "តាមដានផ្ទាល់នូវ backend, worker និង frontend logs។",
+
+  "page.systemSettings.title": "ការកំណត់ប្រព័ន្ធ",
+  "page.systemSettings.subtitle": "ការកំណត់ចំណូលចិត្តកម្មវិធី និងជម្រើសប្រព័ន្ធ។",
+
+  "page.users.title": "គ្រប់គ្រងអ្នកប្រើ",
+  "page.users.subtitle": "គ្រប់គ្រងអ្នកប្រើ តួនាទី និងសិទ្ធិ។",
+
+  "page.workers.title": "Workers",
+  "page.workers.subtitle": "Worker agents ដែលដំណើរការការងារ Ansible / OpenTofu។",
+
+
+  // Workers page
+  "workers.addWorker": "បន្ថែម Worker",
+  "workers.agents": "Worker Agents",
+  "workers.agentsDesc": "Worker node ដែលបានចុះឈ្មោះ និងស្ថានភាព heartbeat។",
+  "workers.loading": "កំពុងផ្ទុក workers…",
+  "workers.empty": "គ្មាន worker ត្រូវបានចុះឈ្មោះ",
+  "workers.emptyHint": "ចុច \"បន្ថែម Worker\" ដើម្បីបង្កើត",
+
+  // Users page
+  "common.users": "អ្នកប្រើ",
+  "users.emptyUsers": "រកមិនឃើញអ្នកប្រើ",
+  "users.emptyRolesSearch": "រកមិនឃើញតួនាទី",
+  "users.noRoles": "មិនទាន់មានតួនាទី",
+  "users.noPermissions": "គ្មានសិទ្ធិ",
+
+  // Templates / Jobs page
+  "templates.tab.jobs": "Build & Deployment Jobs",
+  "templates.tab.catalog": "កាតាឡុកធនធាន",
+  "templates.tab.blueprints": "Stack Blueprints",
+  "templates.tab.jobs.desc": "ដំណើរការ និងតាមដានការងារស្វ័យប្រវត្តិកម្មរបស់អ្នក។",
+  "templates.tab.catalog.desc": "គ្រប់គ្រងធនធានហេដ្ឋារចនាសម្ព័ន្ធ និងការកំណត់ដែលអាចប្រើឡើងវិញ។",
+  "templates.tab.blueprints.desc": "រកមើលគំរូ deployment ដែលអាចប្រើឡើងវិញពីសហគមន៍។",
+  "templates.searchTemplates": "ស្វែងរក templates…",
+  "templates.searchJobs": "ស្វែងរកការងារ…",
+  "templates.templateJobs": "ការងារ Template",
+  "templates.noMatch": "គ្មាន template ត្រូវនឹងការស្វែងរករបស់អ្នក។",
+
+  // Vaults & Secrets
+  "vaults.tab.keys": "Vault Keys",
+  "vaults.tab.files": "ឯកសារបានអ៊ិនគ្រីប",
+  "vaults.tab.secrets": "Machine Secrets",
+  "vaults.card.vaults": "Vaults",
+  "vaults.card.vaultKeys": "Vault Keys",
+  "vaults.noKeys": "មិនទាន់មាន key ត្រូវបានកំណត់។",
+  "vaults.vaultId": "Vault ID",
+  "vaults.path": "ផ្លូវ",
+  "vaults.vault": "Vault",
+  "vaults.noEncrypted": "មិនឃើញឯកសារដែលបានអ៊ិនគ្រីបក្នុង inventory repo។",
+  "vaults.noSecrets": "រកមិនឃើញ secrets។",
+
+  // Cost analysis
+  "cost.providers": "អ្នកផ្ដល់សេវា",
+  "cost.loadingPricing": "កំពុងផ្ទុកតម្លៃ…",
+  "cost.step1": "ជំហានទី ១ · ប្រភព និងអ្នកផ្ដល់សេវា",
+  "cost.step2": "ជំហានទី ២ · ធនធានហេដ្ឋារចនាសម្ព័ន្ធ",
+  "cost.provider": "អ្នកផ្ដល់សេវា",
+  "cost.resourceSource": "ប្រភពធនធាន",
+  "cost.stack": "Stack",
+  "cost.pastePlan": "បិទភ្ជាប់ OpenTofu/Terraform plan JSON",
+  "cost.costByService": "តម្លៃតាមសេវា",
+  "cost.monthlyByResource": "តម្លៃប្រចាំខែតាមធនធាន",
+  "cost.detailedBreakdown": "ការបំបែកតម្លៃលម្អិត",
+  "cost.autoSaved": "រក្សាទុកដោយស្វ័យប្រវត្តិបន្ទាប់ពី Apply ជោគជ័យ",
+  "cost.resource": "ធនធាន",
+  "cost.kind": "ប្រភេទ",
+  "cost.unit": "ឯកតា",
+  "cost.unitPrice": "តម្លៃឯកតា",
+  "cost.monthly": "ប្រចាំខែ",
+  "cost.yearly": "ប្រចាំឆ្នាំ",
+  "cost.total": "សរុប",
+  "cost.noResources": "គ្មានធនធាន — ចុច «Add resource» ដើម្បីចាប់ផ្ដើម។",
+  "cost.selectStack": "ជ្រើសរើស stack…",
+  "cost.allStacks": "stacks ទាំងអស់",
+  "cost.allProviders": "អ្នកផ្ដល់ទាំងអស់",
+  "cost.from": "ចាប់ពី",
+};

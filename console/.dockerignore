@@ -1,0 +1,27 @@
+node_modules/
+npm-debug.log*
+.git/
+.gitignore
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+*.pyc
+data/logs/
+old-docs/
+*.md
+.env
+.env.*
+!.env.example
+*:Zone.Identifier
+*.Zone.Identifier
+old-web-frontend/
+old-docs/
+documentation/
+OpenSible-docs/
+# NOTE: IaC/, backend/, worker/ must NOT be ignored — backend & worker
+# Dockerfiles COPY from them. The frontend Dockerfile only COPYs src/,
+# so leaving them in the context is harmless for frontend builds.
+data/
+dist/
+.lovable/
