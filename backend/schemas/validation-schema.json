@@ -1,0 +1,215 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Playbook Validation Result Schema",
+  "description": "JSON schema for validation results of Playbook Editor",
+  
+  "definitions": {
+    "ValidationIssue": {
+      "type": "object",
+      "title": "Validation Issue",
+      "description": "Single validation error or warning",
+      "required": ["level", "code", "message"],
+      "properties": {
+        "level": {
+          "type": "string",
+          "enum": ["error", "warning"],
+          "description": "Severity level of the issue"
+        },
+        "code": {
+          "type": "string",
+          "description": "Error code for programmatic handling",
+          "enum": [
+            "PLAYBOOK_EMPTY",
+            "PLAYBOOK_INVALID_PLAYS",
+            "NO_ROLES",
+            "GROUP_NOT_EXISTS",
+            "GROUP_EMPTY",
+            "ROLE_NOT_EXISTS",
+            "ROLE_REQUIRES_GROUP",
+            "ROLE_ORDERING",
+            "PLAY_NAME_REQUIRED",
+            "DUPLICATE_PLAY_ID",
+            "CIRCULAR_DEPENDENCY",
+            "MISSING_REQUIRED_ROLE",
+            "DUPLICATE_ROLE_EXECUTION",
+            "REMOTE_USER_INVALID"
+          ]
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable error message",
+          "minLength": 1
+        },
+        "field": {
+          "type": ["string", "null"],
+          "description": "Field name where the issue occurs (e.g., 'hosts', 'roles', 'name')"
+        },
+        "play_id": {
+          "type": ["string", "null"],
+          "description": "ID of the play where the issue occurs"
+        },
+        "role_name": {
+          "type": ["string", "null"],
+          "description": "Name of the role related to the issue"
+        },
+        "group_name": {
+          "type": ["string", "null"],
+          "description": "Name of the group related to the issue"
+        },
+        "required_group": {
+          "type": ["string", "null"],
+          "description": "Required group name (for ROLE_REQUIRES_GROUP)"
+        },
+        "current_group": {
+          "type": ["string", "null"],
+          "description": "Current group name (for ROLE_REQUIRES_GROUP)"
+        },
+        "required_role": {
+          "type": ["string", "null"],
+          "description": "Required role name (for ROLE_ORDERING, MISSING_REQUIRED_ROLE)"
+        },
+        "position": {
+          "type": ["integer", "null"],
+          "description": "Current position of role in array (for ROLE_ORDERING)",
+          "minimum": 0
+        },
+        "required_position": {
+          "type": ["integer", "null"],
+          "description": "Required position of role (for ROLE_ORDERING)",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    
+    "PlayValidation": {
+      "type": "object",
+      "title": "Play Validation Result",
+      "description": "Validation result for a single play",
+      "required": ["play_id", "valid", "can_run", "errors", "warnings"],
+      "properties": {
+        "play_id": {
+          "type": "string",
+          "description": "ID of the validated play",
+          "minLength": 1
+        },
+        "valid": {
+          "type": "boolean",
+          "description": "Whether the play is valid (no errors)"
+        },
+        "can_run": {
+          "type": "boolean",
+          "description": "Whether the play can be executed (no errors)"
+        },
+        "errors": {
+          "type": "array",
+          "description": "List of error-level validation issues",
+          "items": {
+            "$ref": "#/definitions/ValidationIssue"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "description": "List of warning-level validation issues",
+          "items": {
+            "$ref": "#/definitions/ValidationIssue"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    
+    "PlaybookValidation": {
+      "type": "object",
+      "title": "Playbook Validation Result",
+      "description": "Validation result for the entire playbook",
+      "required": ["valid", "can_run", "errors", "warnings"],
+      "properties": {
+        "valid": {
+          "type": "boolean",
+          "description": "Whether the playbook is valid (no errors)"
+        },
+        "can_run": {
+          "type": "boolean",
+          "description": "Whether the playbook can be executed (no errors)"
+        },
+        "errors": {
+          "type": "array",
+          "description": "List of playbook-level error issues",
+          "items": {
+            "$ref": "#/definitions/ValidationIssue"
+          }
+        },
+        "warnings": {
+          "type": "array",
+          "description": "List of playbook-level warning issues",
+          "items": {
+            "$ref": "#/definitions/ValidationIssue"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    
+    "ValidationSummary": {
+      "type": "object",
+      "title": "Validation Summary",
+      "description": "Summary statistics of validation results",
+      "required": [
+        "total_errors",
+        "total_warnings",
+        "plays_with_errors",
+        "plays_with_warnings",
+        "playbook_can_run"
+      ],
+      "properties": {
+        "total_errors": {
+          "type": "integer",
+          "description": "Total number of errors across all plays and playbook",
+          "minimum": 0
+        },
+        "total_warnings": {
+          "type": "integer",
+          "description": "Total number of warnings across all plays and playbook",
+          "minimum": 0
+        },
+        "plays_with_errors": {
+          "type": "integer",
+          "description": "Number of plays that have errors",
+          "minimum": 0
+        },
+        "plays_with_warnings": {
+          "type": "integer",
+          "description": "Number of plays that have warnings",
+          "minimum": 0
+        },
+        "playbook_can_run": {
+          "type": "boolean",
+          "description": "Whether the entire playbook can be executed"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  
+  "type": "object",
+  "title": "Complete Validation Result",
+  "description": "Complete validation result for a playbook",
+  "required": ["playbook", "plays", "summary"],
+  "properties": {
+    "playbook": {
+      "$ref": "#/definitions/PlaybookValidation"
+    },
+    "plays": {
+      "type": "array",
+      "description": "Validation results for each play",
+      "items": {
+        "$ref": "#/definitions/PlayValidation"
+      }
+    },
+    "summary": {
+      "$ref": "#/definitions/ValidationSummary"
+    }
+  },
+  "additionalProperties": false
+}

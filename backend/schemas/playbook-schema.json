@@ -1,0 +1,237 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Ansible Playbook Editor Data Model",
+  "description": "JSON schema for Playbook, Play, and Role entities",
+  
+  "definitions": {
+    "InlineTask": {
+      "type": "object",
+      "title": "Inline Task",
+      "description": "An inline task within a Play (not a role)",
+      "required": ["id", "name", "module"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the task (UUID or generated ID)",
+          "pattern": "^[a-zA-Z0-9_-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Task name/description",
+          "minLength": 1
+        },
+        "module": {
+          "type": "string",
+          "description": "Ansible module name (e.g., 'command', 'shell', 'file', 'service')",
+          "minLength": 1
+        },
+        "args": {
+          "type": "object",
+          "description": "Module arguments (key-value pairs)",
+          "additionalProperties": true,
+          "default": {}
+        },
+        "when": {
+          "type": "string",
+          "description": "Conditional expression for task execution",
+          "default": null
+        },
+        "tags": {
+          "type": "array",
+          "description": "Tags for selective execution",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "become": {
+          "type": "boolean",
+          "description": "Whether to become another user (sudo/su) for this task",
+          "default": false
+        },
+        "placement": {
+          "type": "string",
+          "description": "Where to place the task in play execution order",
+          "enum": ["pre_tasks", "before_role", "after_role", "post_tasks"],
+          "default": "pre_tasks"
+        },
+        "placement_target": {
+          "type": "string",
+          "description": "Role name or index for before_role/after_role placement",
+          "default": null
+        },
+        "yaml_override": {
+          "type": "string",
+          "description": "Raw YAML for advanced users (overrides other fields if set)",
+          "default": null
+        }
+      },
+      "additionalProperties": false
+    },
+    "Role": {
+      "type": "object",
+      "title": "Role",
+      "description": "An Ansible role within a Play",
+      "required": ["role_name", "auto"],
+      "properties": {
+        "role_name": {
+          "type": "string",
+          "description": "Name of the Ansible role (must exist in project roles)",
+          "minLength": 1
+        },
+        "tag": {
+          "type": "string",
+          "description": "Tag for selective execution",
+          "default": ""
+        },
+        "auto": {
+          "type": "boolean",
+          "description": "Whether the role is automatically included"
+        },
+        "vars_override": {
+          "type": "object",
+          "description": "Optional variables to override role defaults",
+          "additionalProperties": true,
+          "default": null
+        }
+      },
+      "additionalProperties": false
+    },
+    
+    "Play": {
+      "type": "object",
+      "title": "Play",
+      "description": "A single play in an Ansible playbook",
+      "required": ["id", "name", "hosts", "become"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the play (UUID or generated ID)",
+          "pattern": "^[a-zA-Z0-9_-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Human-readable name/description of the play",
+          "minLength": 1
+        },
+        "hosts": {
+          "type": "string",
+          "description": "Host group name from inventory (e.g., 'redis_masters', 'all')",
+          "minLength": 1
+        },
+        "remote_user": {
+          "type": "string",
+          "description": "Remote user to execute tasks as",
+          "default": null
+        },
+        "become": {
+          "type": "boolean",
+          "description": "Whether to become another user (sudo/su)"
+        },
+        "strategy": {
+          "type": "string",
+          "description": "Execution strategy (linear, free, debug, etc.)",
+          "enum": ["linear", "free", "debug"],
+          "default": "linear"
+        },
+        "roles": {
+          "type": "array",
+          "description": "Ordered list of roles to execute in this play",
+          "items": {
+            "$ref": "#/definitions/Role"
+          },
+          "default": []
+        },
+        "pre_tasks": {
+          "type": "array",
+          "description": "Inline tasks to execute before roles",
+          "items": {
+            "$ref": "#/definitions/InlineTask"
+          },
+          "default": []
+        },
+        "post_tasks": {
+          "type": "array",
+          "description": "Inline tasks to execute after roles",
+          "items": {
+            "$ref": "#/definitions/InlineTask"
+          },
+          "default": []
+        },
+        "vars_files": {
+          "type": "array",
+          "description": "Paths to vars files (e.g. vars/secrets.yml)",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "vault_id": {
+          "type": "string",
+          "description": "Vault key ID for decrypting vars_files",
+          "default": null
+        }
+      },
+      "additionalProperties": false
+    },
+    
+    "Playbook": {
+      "type": "object",
+      "title": "Playbook",
+      "description": "Complete Ansible playbook structure",
+      "required": ["project_id", "plays"],
+      "properties": {
+        "project_id": {
+          "type": "string",
+          "description": "ID of the project this playbook belongs to",
+          "minLength": 1
+        },
+        "name": {
+          "type": "string",
+          "description": "Playbook name/identifier",
+          "minLength": 1
+        },
+        "description": {
+          "type": "string",
+          "description": "Optional description of the playbook",
+          "default": ""
+        },
+        "plays": {
+          "type": "array",
+          "description": "Ordered list of plays (order matters for execution)",
+          "items": {
+            "$ref": "#/definitions/Play"
+          },
+          "minItems": 0
+        },
+        "metadata": {
+          "type": "object",
+          "description": "Additional metadata (created_at, updated_at, version, etc.)",
+          "properties": {
+            "created_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "version": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  
+  "oneOf": [
+    { "$ref": "#/definitions/Playbook" },
+    { "$ref": "#/definitions/Play" },
+    { "$ref": "#/definitions/Role" },
+    { "$ref": "#/definitions/InlineTask" }
+  ]
+}

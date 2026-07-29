@@ -1,0 +1,78 @@
+{
+  "example": {
+    "Playbook": {
+      "project_id": "project-123",
+      "name": "redis-cluster-setup",
+      "description": "Setup Redis cluster with load balancer",
+      "plays": [
+        {
+          "id": "play-1",
+          "name": "Configure Redis Load Balancer",
+          "hosts": "redis_lb",
+          "remote_user": "ansible",
+          "become": true,
+          "strategy": "linear",
+          "roles": [
+            {
+              "role_name": "nginx",
+              "tag": "lb",
+              "auto": true,
+              "vars_override": {
+                "nginx_port": 6379,
+                "upstream_servers": ["192.168.1.133", "192.168.1.134"]
+              }
+            },
+            {
+              "role_name": "redis",
+              "tag": "setup",
+              "auto": true
+            }
+          ]
+        },
+        {
+          "id": "play-2",
+          "name": "Setup Redis Masters",
+          "hosts": "redis_masters",
+          "remote_user": "ansible",
+          "become": true,
+          "strategy": "free",
+          "roles": [
+            {
+              "role_name": "redis",
+              "tag": "master",
+              "auto": true,
+              "vars_override": {
+                "redis_mode": "master",
+                "redis_port": 6379
+              }
+            }
+          ]
+        },
+        {
+          "id": "play-3",
+          "name": "Setup Redis Replicas",
+          "hosts": "redis_replicas",
+          "remote_user": "ansible",
+          "become": true,
+          "strategy": "linear",
+          "roles": [
+            {
+              "role_name": "redis",
+              "tag": "replica",
+              "auto": true,
+              "vars_override": {
+                "redis_mode": "replica",
+                "redis_master_host": "192.168.1.133"
+              }
+            }
+          ]
+        }
+      ],
+      "metadata": {
+        "created_at": "2024-01-15T10:00:00Z",
+        "updated_at": "2024-01-15T11:30:00Z",
+        "version": 1
+      }
+    }
+  }
+}
