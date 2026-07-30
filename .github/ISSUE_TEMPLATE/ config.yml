@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question
+    url: https://github.com/opensible/opensible/discussions
+    about: Please use GitHub Discussions for how-to questions and general help.
+  - name: Report a security vulnerability
+    url: https://github.com/opensible/opensible/security/advisories/new
+    about: Please report security issues privately via GitHub Security Advisories or email security@opensible.com.
+  - name: Documentation
+    url: https://github.com/opensible/opensible/wiki
+    about: Check the OpenSible wiki before filing an issue.
