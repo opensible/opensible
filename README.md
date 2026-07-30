@@ -76,14 +76,6 @@ Read the [contributing guide](https://docs.opensible.com/opensiblev1/4-contribut
 
 ---
 
-## Support the project
-
-OpenSible is 100% bootstrapped, self-funded and independent. Because we test and support cloud providers on our own infrastructure and budget, we are grateful for any ecosystem partner who can help with compute, cloud credits, services, or other infrastructure resources.
-
-If your organization is part of the OpenSible ecosystem and would like to support the project with resources, infrastructure or a partnership, please reach out to us at **partnerships@opensible.com**.
-
----
-
 ## License
 
 OpenSible is released under the [AGPL-3.0 License](https://github.com/opensible/opensible/blob/main/LICENSE).
