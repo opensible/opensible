@@ -76,7 +76,7 @@ Read the [contributing guide](https://docs.opensible.com/opensiblev1/4-contribut
 
 ---
 
-Notice: AI was used for 60% of this project's development process to speed up tasks such as generating boilerplate code, writing tests, refactoring, and documentation. However, the architecture, design decisions, and implementation still required manual work, testing, and review.
+Notice: For the initial release, AI was used for 60% of this project's development process to speed up tasks such as generating boilerplate code, writing tests, refactoring, and documentation. However, the architecture, design decisions, and implementation still required manual work, testing, and review.
 
 ## License
 
