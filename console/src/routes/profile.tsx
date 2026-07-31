@@ -35,7 +35,9 @@ function ProfilePage() {
       return u as Me | null;
     },
   });
-  const me = meQ.data ?? (getStoredUser<Me>() as Me | null);
+  const stored = getStoredUser<any>() as any;
+  const me = (meQ.data ?? stored ?? null) as (Me & { user_id?: string }) | null;
+  const meId = me ? String((me as any).id ?? (me as any).user_id ?? "") : "";
 
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -51,12 +53,12 @@ function ProfilePage() {
       setUsername(me.username || "");
       setEmail(me.email || "");
     }
-  }, [me?.id]);
+  }, [meId]);
 
   const saveProfile = useMutation({
     mutationFn: async () => {
-      if (!me?.id) throw new Error("Not signed in");
-      return api("PUT", `/api/users/${me.id}`, {
+      if (!meId) throw new Error("Not signed in");
+      return api("PUT", `/api/users/${meId}`, {
         username: username.trim(),
         email: email.trim() || null,
       });
@@ -76,8 +78,8 @@ function ProfilePage() {
 
   const changePassword = useMutation({
     mutationFn: async () => {
-      if (!me?.id) throw new Error("Not signed in");
-      return api("PUT", `/api/users/${me.id}`, {
+      if (!meId) throw new Error("Not signed in");
+      return api("PUT", `/api/users/${meId}`, {
         current_password: currentPw,
         password: newPw,
       });
@@ -150,7 +152,7 @@ function ProfilePage() {
           <div className="flex justify-end">
             <Button
               onClick={() => { setProfileErr(null); saveProfile.mutate(); }}
-              disabled={saveProfile.isPending || !username.trim() || !me?.id}
+              disabled={saveProfile.isPending || !username.trim() }
             >
               <Save className="h-4 w-4 mr-1" />
               {saveProfile.isPending ? "Saving…" : "Save changes"}
@@ -180,7 +182,7 @@ function ProfilePage() {
           <div className="flex justify-end">
             <Button
               onClick={submitPassword}
-              disabled={changePassword.isPending || !me?.id}
+              disabled={changePassword.isPending }
             >
               <KeyRound className="h-4 w-4 mr-1" />
               {changePassword.isPending ? "Updating…" : "Update password"}

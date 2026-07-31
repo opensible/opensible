@@ -42,8 +42,14 @@ export async function logout() {
 }
 
 export async function fetchMe(): Promise<CurrentUser | null> {
-  try { return await api<CurrentUser>("GET", "/api/auth/me"); }
-  catch { return null; }
+  try {
+    const res = await api<CurrentUser & { user?: CurrentUser }>("GET", "/api/auth/me");
+    const u = (res && typeof res === "object" && res.user) ? res.user : res;
+    if (!u) return null;
+    // normalise id field across API shapes
+    const id = (u as any).id ?? (u as any).user_id;
+    return id ? { ...u, id: String(id) } : u;
+  } catch { return null; }
 }
 
 export function getCachedUser(): CurrentUser | null {
