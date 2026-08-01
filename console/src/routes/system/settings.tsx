@@ -2,7 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
 import {
-  Database, SlidersHorizontal, Info,
+  SlidersHorizontal, Info,
   KeyRound, Bug, Upload, History, CheckCircle2, XCircle, Plus, RefreshCw,
   Globe,
 } from "lucide-react";
@@ -22,17 +22,19 @@ export const Route = createFileRoute("/system/settings")({ component: SettingsPa
 
 const TABS = [
   { id: "general", label: "General", icon: SlidersHorizontal },
-  { id: "backup", label: "Backup", icon: Database },
   { id: "about", label: "About", icon: Info },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
+
 function SettingsPage() {
   const t = useT();
-  const [tab, setTab] = useState<TabId>(() =>
-    (localStorage.getItem("settingsActiveTab") as TabId) || "general",
-  );
+  const [tab, setTab] = useState<TabId>(() => {
+    const saved = localStorage.getItem("settingsActiveTab") as TabId | null;
+    return TABS.some(t => t.id === saved) ? saved! : "general";
+  });
   useEffect(() => { localStorage.setItem("settingsActiveTab", tab); }, [tab]);
+
 
   return (
     <div className="space-y-4">
@@ -60,7 +62,6 @@ function SettingsPage() {
       </div>
 
       {tab === "general" && <GeneralTab />}
-      {tab === "backup" && <BackupTab />}
       {tab === "about" && <AboutTab />}
     </div>
   );
