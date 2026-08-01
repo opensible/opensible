@@ -20,7 +20,7 @@ export const nav: Record<string, string> = {
   "nav.projectSettings": "프로젝트 설정",
   "nav.serverLogs": "서버 로그",
   "nav.settings": "설정",
-  "nav.usersManagement": "사용자 관리",
+  "nav.usersManagement": "팀 멤버",
   "nav.workers": "워커",
   "nav.secretsManagement": "시크릿 관리",
   "nav.api": "API",

@@ -52,7 +52,7 @@ export const pages: Record<string, string> = {
   "page.systemSettings.title": "시스템 설정",
   "page.systemSettings.subtitle": "애플리케이션 기본 설정 및 시스템 옵션.",
 
-  "page.users.title": "사용자 관리",
+  "page.users.title": "팀 멤버",
   "page.users.subtitle": "사용자, 역할 및 권한 관리.",
 
   "page.workers.title": "워커",

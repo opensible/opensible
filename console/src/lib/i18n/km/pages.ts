@@ -52,7 +52,7 @@ export const pages: Record<string, string> = {
   "page.systemSettings.title": "ការកំណត់ប្រព័ន្ធ",
   "page.systemSettings.subtitle": "ការកំណត់ចំណូលចិត្តកម្មវិធី និងជម្រើសប្រព័ន្ធ។",
 
-  "page.users.title": "គ្រប់គ្រងអ្នកប្រើ",
+  "page.users.title": "សមាជិកក្រុម",
   "page.users.subtitle": "គ្រប់គ្រងអ្នកប្រើ តួនាទី និងសិទ្ធិ។",
 
   "page.workers.title": "Workers",
