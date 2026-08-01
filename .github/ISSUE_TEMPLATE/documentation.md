@@ -2,8 +2,9 @@
 name: Documentation improvement
 about: Report missing, incorrect, or unclear documentation
 title: "[Docs] "
-labels: ["documentation", "needs-triage"]
-assignees: []
+labels: documentation
+assignees: ''
+
 ---
 
 ## Page or section
