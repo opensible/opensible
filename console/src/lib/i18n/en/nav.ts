@@ -20,7 +20,7 @@ export const nav: Record<string, string> = {
   "nav.projectSettings": "Project Settings",
   "nav.serverLogs": "Server Logs",
   "nav.settings": "Settings",
-  "nav.usersManagement": "Users Management",
+  "nav.usersManagement": "Team Members",
   "nav.workers": "Workers",
   "nav.secretsManagement": "Secrets Management",
   "nav.api": "API",

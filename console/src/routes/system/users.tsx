@@ -49,7 +49,7 @@ function UsersPage() {
   const [tab, setTab] = useState<"users" | "roles">("users");
   return (
     <div className="space-y-6">
-      <Breadcrumbs items={[{ label: "System" }, { label: "Users Management" }]} />
+      <Breadcrumbs items={[{ label: "System" }, { label: t("page.users.title") }]} />
       <div>
         <h1 className="text-xl font-semibold">{t("page.users.title")}</h1>
         <p className="text-sm text-muted-foreground">{t("page.users.subtitle")}</p>
