@@ -581,6 +581,9 @@ def _list_stacks(project_id: Optional[str]) -> List[Dict[str, Any]]:
             "last_run_id": run.get("run_id") or meta.get("last_run_id"),
             "last_run_finished_at": run.get("finished_at"),
             "has_tfvars": tfvars.exists(),
+            "drift_enabled": meta.get("drift_enabled") is True,
+            "drift_status": (_drift_status(project_id, entry.name)["status"]
+                             if meta.get("drift_enabled") is True else "disabled"),
         })
     return out
 
@@ -766,6 +769,7 @@ def stacks_get(name):
         "has_secrets": has_secrets,
         "meta": meta,
         "provider": meta.get("provider") or "bytedc",
+        "drift": _drift_status(pid, name),
     })
 
 
@@ -815,7 +819,7 @@ def stacks_delete(name):
 
 # ---- tofu execution (dispatched to workers, like Ansible) ------------------
 
-_VALID_ACTIONS = {"init", "plan", "apply", "destroy", "validate", "fmt", "refresh"}
+_VALID_ACTIONS = {"init", "plan", "apply", "destroy", "validate", "fmt", "refresh", "drift"}
 
 
 def _tofu_cmd(action: str) -> List[str]:
@@ -836,7 +840,13 @@ def _tofu_cmd(action: str) -> List[str]:
         # without changing infrastructure. Recovers from drift; will NOT
         # re-populate state that was deleted/lost.
         return ["tofu", "apply", "-refresh-only", "-input=false", "-no-color", "-auto-approve"]
+    if action == "drift":
+        # Read-only drift detection: refresh in-memory only and report whether
+        # the real world still matches state. -detailed-exitcode yields
+        # 0 = in sync, 2 = drift detected, 1 = error. Never writes state.
+        return ["tofu", "plan", "-refresh-only", "-input=false", "-no-color", "-detailed-exitcode"]
     raise ValueError(action)
+
 
 
 def _project_logs_dir(project_id: Optional[str]) -> Path:
@@ -928,6 +938,8 @@ def stacks_action(name):
     action = (body.get("action") or "").strip().lower()
     if action not in _VALID_ACTIONS:
         return jsonify({"error": f"Unsupported action. Allowed: {sorted(_VALID_ACTIONS)}"}), 400
+    if action == "drift" and not _drift_enabled(pid, name):
+        return jsonify({"error": "Drift detection is disabled for this stack. Enable it in the stack's Drift detection panel first."}), 409
     worker_id = (body.get("worker_id") or body.get("target_worker_id") or "").strip() or None
     _cu = getattr(request, "current_user", {}) or {}
     _tb = _cu.get("username") or _cu.get("email") or _cu.get("user_id") or ""
@@ -946,6 +958,110 @@ def stacks_action(name):
         "status": "queued",
         "message": "Queued. Waiting for a worker to claim this run.",
     }), 202
+
+
+# ---------------------------------------------------------------------------
+# Drift detection (opt-in per stack, disabled by default)
+# ---------------------------------------------------------------------------
+
+def _read_meta(project_id: Optional[str], name: str) -> Dict[str, Any]:
+    p = _stack_data_dir(project_id, name) / "meta.json"
+    if not p.exists():
+        return {}
+    try:
+        return json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def _drift_enabled(project_id: Optional[str], name: str) -> bool:
+    """Drift detection is OFF unless the stack explicitly opted in."""
+    return bool(_read_meta(project_id, name).get("drift_enabled") is True)
+
+
+def _latest_drift_run(project_id: Optional[str], name: str) -> Optional[Dict[str, Any]]:
+    ex_dir = _project_executions_dir(project_id)
+    if not ex_dir.exists():
+        return None
+    files = sorted(ex_dir.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for f in files[:300]:
+        try:
+            exe = json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        rp = exe.get("runParams") or {}
+        if rp.get("execution_type") != "TOFU_RUN" or rp.get("stack_name") != name:
+            continue
+        if rp.get("tofu_action") != "drift":
+            continue
+        return exe
+    return None
+
+
+def _drift_status(project_id: Optional[str], name: str) -> Dict[str, Any]:
+    """Derive drift state from the most recent `drift` run of this stack.
+
+    OpenTofu's `-detailed-exitcode` semantics:
+      0 -> in sync, 2 -> drift detected, anything else -> error.
+    """
+    out: Dict[str, Any] = {
+        "enabled": _drift_enabled(project_id, name),
+        "status": "unknown",
+        "last_run_id": None,
+        "last_checked_at": None,
+        "returncode": None,
+        "run_status": None,
+    }
+    exe = _latest_drift_run(project_id, name)
+    if not exe:
+        return out
+    rc = exe.get("returnCode")
+    run_status = _status_to_ui(exe.get("status", ""))
+    out["last_run_id"] = exe.get("id")
+    out["last_checked_at"] = int(exe.get("finishedAt") or exe.get("startedAt") or exe.get("createdAt") or 0) or None
+    out["returncode"] = rc
+    out["run_status"] = run_status
+    if run_status in ("queued", "running"):
+        out["status"] = "checking"
+    elif run_status == "canceled":
+        out["status"] = "unknown"
+    elif rc == 0:
+        out["status"] = "in_sync"
+    elif rc == 2:
+        out["status"] = "drifted"
+    elif rc is None:
+        out["status"] = "unknown"
+    else:
+        out["status"] = "error"
+    return out
+
+
+@bp.route("/stacks/<name>/drift", methods=["GET"])
+@require_auth
+def drift_get(name):
+    pid = _get_project_id()
+    if not _valid_name(name) or not _stack_dir(pid, name).exists():
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(_drift_status(pid, name))
+
+
+@bp.route("/stacks/<name>/drift", methods=["PUT"])
+@require_auth
+def drift_set(name):
+    """Enable/disable drift detection for a single stack. Default: disabled."""
+    pid = _get_project_id()
+    if not _valid_name(name) or not _stack_dir(pid, name).exists():
+        return jsonify({"error": "Not found"}), 404
+    body = request.get_json(silent=True) or {}
+    enabled = body.get("enabled")
+    if isinstance(enabled, str):
+        enabled = enabled.strip().lower() in ("1", "true", "yes", "on")
+    if not isinstance(enabled, bool):
+        return jsonify({"error": "Body must include boolean 'enabled'."}), 400
+    _save_meta(pid, name, drift_enabled=enabled)
+    return jsonify({"ok": True, **_drift_status(pid, name)})
+
+
 
 
 def _status_to_ui(s: str) -> str:
