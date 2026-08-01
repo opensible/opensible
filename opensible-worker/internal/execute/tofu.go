@@ -39,6 +39,10 @@ func tofuArgs(action string) ([]string, error) {
 		return []string{"tofu", "fmt", "-recursive"}, nil
 	case "refresh":
 		return []string{"tofu", "apply", "-refresh-only", "-input=false", "-no-color", "-auto-approve"}, nil
+	case "drift":
+		// Read-only drift detection. -detailed-exitcode: 0 = in sync,
+		// 2 = drift detected, 1 = error. State is never written.
+		return []string{"tofu", "plan", "-refresh-only", "-input=false", "-no-color", "-detailed-exitcode"}, nil
 	}
 	return nil, errors.New("unsupported tofu action: " + action)
 }
@@ -459,6 +463,18 @@ loop:
 	}
 	if returnCode != nil && *returnCode == 0 {
 		finalStatus = "SUCCESS"
+	}
+	// `drift` runs `tofu plan -detailed-exitcode`, where exit 2 means
+	// "changes detected" — a successful check, not a failure.
+	if strings.EqualFold(action, "drift") && returnCode != nil {
+		switch *returnCode {
+		case 0:
+			finalStatus = "SUCCESS"
+			sendLog("\n[drift] no drift detected — infrastructure matches state.\n")
+		case 2:
+			finalStatus = "SUCCESS"
+			sendLog("\n[drift] DRIFT DETECTED — the live infrastructure differs from the recorded state (see plan above).\n")
+		}
 	}
 	if killed {
 		finalStatus = "CANCELED"

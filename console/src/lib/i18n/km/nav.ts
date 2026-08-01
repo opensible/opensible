@@ -20,7 +20,7 @@ export const nav: Record<string, string> = {
   "nav.projectSettings": "ការកំណត់គម្រោង",
   "nav.serverLogs": "កំណត់ហេតុម៉ាស៊ីនមេ",
   "nav.settings": "ការកំណត់",
-  "nav.usersManagement": "គ្រប់គ្រងអ្នកប្រើ",
+  "nav.usersManagement": "សមាជិកក្រុម",
   "nav.workers": "កម្មករ",
   "nav.secretsManagement": "គ្រប់គ្រង Secrets",
   "nav.api": "API",

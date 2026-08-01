@@ -26,6 +26,7 @@ type StackRow = {
   region?: string;
   last_action?: string;
   last_status?: string;
+  drift_status?: string;
   updated_at?: number;
 };
 
@@ -69,6 +70,18 @@ function StacksList() {
       cell: (c) => {
         const v = c.getValue();
         return v ? <Badge variant={statusToVariant(v)}>{v}</Badge> : "—";
+      },
+    }),
+    col.accessor("drift_status", {
+      header: "Drift",
+      cell: (c) => {
+        const v = c.getValue();
+        if (!v || v === "disabled") return <span className="text-[var(--color-muted-foreground)]">Off</span>;
+        if (v === "in_sync") return <Badge variant="success">In sync</Badge>;
+        if (v === "drifted") return <Badge variant="warning">Drift</Badge>;
+        if (v === "checking") return <Badge variant="primary">Checking</Badge>;
+        if (v === "error") return <Badge variant="destructive">Failed</Badge>;
+        return <Badge variant="default">Not checked</Badge>;
       },
     }),
     col.accessor("updated_at", {

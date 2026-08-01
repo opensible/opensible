@@ -69,7 +69,7 @@ export const pages: Record<string, string> = {
   "page.systemSettings.subtitle": "Application preferences and system options.",
 
   // System - users
-  "page.users.title": "Users Management",
+  "page.users.title": "Team Members",
   "page.users.subtitle": "Manage users, roles, and permissions.",
 
   // System - workers

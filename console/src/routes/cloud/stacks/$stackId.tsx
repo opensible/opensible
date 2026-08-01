@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, CheckCircle2, Download, Search, Rocket, Bomb, RefreshCcw, RefreshCw, Clock,
-  GitBranch, GitPullRequestArrow, Edit, Trash2, KeyRound, AlertTriangle, Boxes, Github,
+  GitBranch, GitPullRequestArrow, Edit, Trash2, KeyRound, AlertTriangle, Boxes, Github, Radar,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Breadcrumbs } from "@/components/app-shell/Breadcrumbs";
@@ -22,12 +22,22 @@ const GITHUB_ISSUES_URL = "https://github.com/opensible/opensible/issues/new";
 
 export const Route = createFileRoute("/cloud/stacks/$stackId")({ component: StackDetail });
 
+type DriftInfo = {
+  enabled: boolean;
+  status: "unknown" | "in_sync" | "drifted" | "checking" | "error" | string;
+  last_run_id?: string | null;
+  last_checked_at?: number | null;
+  returncode?: number | null;
+  run_status?: string | null;
+};
+
 type StackData = {
   name: string;
   provider?: string;
   path?: string;
   has_secrets?: boolean;
   terraform_tfvars?: string;
+  drift?: DriftInfo;
 };
 
 type RunResp = {
@@ -102,6 +112,26 @@ function StackDetail() {
     refetchInterval: 15000,
   });
 
+  const driftQ = useQuery({
+    queryKey: ["cloud", "stack-drift", stackId],
+    queryFn: () => api<DriftInfo>("GET", `/api/cloud/stacks/${encodeURIComponent(stackId)}/drift`),
+    refetchInterval: 20000,
+  });
+  const drift = driftQ.data;
+  const driftEnabled = !!drift?.enabled;
+
+  const driftToggleMut = useMutation({
+    mutationFn: (enabled: boolean) =>
+      api<DriftInfo>("PUT", `/api/cloud/stacks/${encodeURIComponent(stackId)}/drift`, { enabled }),
+    onSuccess: (_d, enabled) => {
+      toast.success(enabled ? "Drift detection enabled" : "Drift detection disabled");
+      driftQ.refetch();
+      queryClient.invalidateQueries({ queryKey: qk.stacks });
+      queryClient.invalidateQueries({ queryKey: qk.stack(stackId) });
+    },
+    onError: (e: any) => toast.error(e?.message || "Failed to update drift detection"),
+  });
+
   const runsQ = useQuery({
     queryKey: ["cloud", "stack-runs", stackId],
     queryFn: () => api<{ runs: Array<any> }>("GET", `/api/cloud/runs`),
@@ -142,6 +172,7 @@ function StackDetail() {
             queryClient.invalidateQueries({ queryKey: qk.stack(stackId) });
             queryClient.invalidateQueries({ queryKey: qk.runs });
             refetchState();
+            driftQ.refetch();
           }
         } catch { /* keep polling */ }
       };
@@ -213,6 +244,16 @@ function StackDetail() {
       setGitBusy(null);
     }
   }
+
+  const driftBadge = (() => {
+    switch (drift?.status) {
+      case "in_sync": return { label: "In sync", variant: "success" as const, color: "var(--color-success)" };
+      case "drifted": return { label: "Drift detected", variant: "warning" as const, color: "var(--color-warning)" };
+      case "checking": return { label: "Checking…", variant: "primary" as const, color: "var(--color-primary)" };
+      case "error": return { label: "Check failed", variant: "destructive" as const, color: "var(--color-destructive)" };
+      default: return { label: "Not checked", variant: "default" as const, color: "var(--color-muted-foreground)" };
+    }
+  })();
 
   const deleteMut = useMutation({
     mutationFn: () => api("DELETE", `/api/cloud/stacks/${encodeURIComponent(stackId)}?force=true`),
@@ -305,6 +346,12 @@ function StackDetail() {
             {running === a.id && <span className="ml-1 animate-pulse">…</span>}
           </Button>
         ))}
+        {driftEnabled && (
+          <Button variant="outline" disabled={!!running} onClick={() => runAction("drift", false)}>
+            <Radar className="h-4 w-4" /> Check Drift
+            {running === "drift" && <span className="ml-1 animate-pulse">…</span>}
+          </Button>
+        )}
         <Button variant="outline" onClick={() => setShowInventory(true)}>
           <Boxes className="h-4 w-4" /> VM Inventory
         </Button>
@@ -355,6 +402,79 @@ function StackDetail() {
           </div>
         </div>
       )}
+
+      <Card>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Radar className="h-4 w-4" /> Drift detection
+              {driftEnabled ? (
+                <Badge variant={driftBadge.variant}>{driftBadge.label}</Badge>
+              ) : (
+                <Badge variant="default">Disabled</Badge>
+              )}
+            </CardTitle>
+            <p className="text-xs text-[var(--color-muted-foreground)] mt-1 max-w-xl">
+              Compares the live infrastructure against this stack's recorded state using a read-only
+              <code className="mx-1 font-mono">tofu plan -refresh-only</code>
+              check. It never modifies infrastructure or writes state. Disabled by default.
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={driftEnabled}
+            aria-label="Toggle drift detection"
+            disabled={driftToggleMut.isPending}
+            onClick={() => driftToggleMut.mutate(!driftEnabled)}
+            className="relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-50"
+            style={{ background: driftEnabled ? "var(--color-primary)" : "var(--color-muted)" }}
+          >
+            <span
+              className="inline-block h-5 w-5 rounded-full bg-[var(--color-background)] shadow transition-transform"
+              style={{ transform: driftEnabled ? "translateX(22px)" : "translateX(2px)" }}
+            />
+          </button>
+        </CardHeader>
+        <CardContent>
+          {!driftEnabled ? (
+            <div className="text-sm text-[var(--color-muted-foreground)]">
+              Drift detection is turned off for this stack. Enable it to run drift checks and track whether
+              the live infrastructure still matches your code.
+            </div>
+          ) : (
+            <div className="text-sm space-y-2">
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
+                <span>
+                  Status: <b style={{ color: driftBadge.color }}>{driftBadge.label}</b>
+                </span>
+                <span className="text-[var(--color-muted-foreground)]">
+                  Last checked: {drift?.last_checked_at ? fmtRelSec(drift.last_checked_at) : "never"}
+                </span>
+                {drift?.returncode != null && (
+                  <span className="text-[var(--color-muted-foreground)]">exit {drift.returncode}</span>
+                )}
+              </div>
+              <div className="text-xs text-[var(--color-muted-foreground)]">
+                {drift?.status === "drifted"
+                  ? "The live infrastructure no longer matches state. Run Refresh State to reconcile state, or Apply to push your code back onto the infrastructure."
+                  : drift?.status === "in_sync"
+                  ? "No drift detected at the last check."
+                  : drift?.status === "checking"
+                  ? "A drift check is currently running…"
+                  : drift?.status === "error"
+                  ? "The last drift check failed — open the run log for details."
+                  : "No drift check has completed yet. Click Check Drift to run one."}
+              </div>
+              <Button variant="outline" size="sm" disabled={!!running} onClick={() => runAction("drift", false)}>
+                <Radar className="h-4 w-4 mr-1.5" /> Check Drift
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+
 
       {(lastAction || running) && (
         <RunFlowGraph
