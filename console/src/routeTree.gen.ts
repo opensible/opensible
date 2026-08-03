@@ -17,7 +17,6 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as SystemWorkersRouteImport } from './routes/system/workers'
 import { Route as SystemUsersRouteImport } from './routes/system/users'
 import { Route as SystemSettingsRouteImport } from './routes/system/settings'
-import { Route as SystemServerLogsRouteImport } from './routes/system/server-logs'
 import { Route as SystemSecretsRouteImport } from './routes/system/secrets'
 import { Route as SystemApiRouteImport } from './routes/system/api'
 import { Route as InfrastructureVaultsSecretsRouteImport } from './routes/infrastructure/vaults-secrets'
@@ -84,11 +83,6 @@ const SystemUsersRoute = SystemUsersRouteImport.update({
 const SystemSettingsRoute = SystemSettingsRouteImport.update({
   id: '/system/settings',
   path: '/system/settings',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const SystemServerLogsRoute = SystemServerLogsRouteImport.update({
-  id: '/system/server-logs',
-  path: '/system/server-logs',
   getParentRoute: () => rootRouteImport,
 } as any)
 const SystemSecretsRoute = SystemSecretsRouteImport.update({
@@ -253,7 +247,6 @@ export interface FileRoutesByFullPath {
   '/infrastructure/vaults-secrets': typeof InfrastructureVaultsSecretsRoute
   '/system/api': typeof SystemApiRoute
   '/system/secrets': typeof SystemSecretsRoute
-  '/system/server-logs': typeof SystemServerLogsRoute
   '/system/settings': typeof SystemSettingsRoute
   '/system/users': typeof SystemUsersRoute
   '/system/workers': typeof SystemWorkersRoute
@@ -291,7 +284,6 @@ export interface FileRoutesByTo {
   '/infrastructure/vaults-secrets': typeof InfrastructureVaultsSecretsRoute
   '/system/api': typeof SystemApiRoute
   '/system/secrets': typeof SystemSecretsRoute
-  '/system/server-logs': typeof SystemServerLogsRoute
   '/system/settings': typeof SystemSettingsRoute
   '/system/users': typeof SystemUsersRoute
   '/system/workers': typeof SystemWorkersRoute
@@ -330,7 +322,6 @@ export interface FileRoutesById {
   '/infrastructure/vaults-secrets': typeof InfrastructureVaultsSecretsRoute
   '/system/api': typeof SystemApiRoute
   '/system/secrets': typeof SystemSecretsRoute
-  '/system/server-logs': typeof SystemServerLogsRoute
   '/system/settings': typeof SystemSettingsRoute
   '/system/users': typeof SystemUsersRoute
   '/system/workers': typeof SystemWorkersRoute
@@ -370,7 +361,6 @@ export interface FileRouteTypes {
     | '/infrastructure/vaults-secrets'
     | '/system/api'
     | '/system/secrets'
-    | '/system/server-logs'
     | '/system/settings'
     | '/system/users'
     | '/system/workers'
@@ -408,7 +398,6 @@ export interface FileRouteTypes {
     | '/infrastructure/vaults-secrets'
     | '/system/api'
     | '/system/secrets'
-    | '/system/server-logs'
     | '/system/settings'
     | '/system/users'
     | '/system/workers'
@@ -446,7 +435,6 @@ export interface FileRouteTypes {
     | '/infrastructure/vaults-secrets'
     | '/system/api'
     | '/system/secrets'
-    | '/system/server-logs'
     | '/system/settings'
     | '/system/users'
     | '/system/workers'
@@ -485,7 +473,6 @@ export interface RootRouteChildren {
   InfrastructureVaultsSecretsRoute: typeof InfrastructureVaultsSecretsRoute
   SystemApiRoute: typeof SystemApiRoute
   SystemSecretsRoute: typeof SystemSecretsRoute
-  SystemServerLogsRoute: typeof SystemServerLogsRoute
   SystemSettingsRoute: typeof SystemSettingsRoute
   SystemUsersRoute: typeof SystemUsersRoute
   SystemWorkersRoute: typeof SystemWorkersRoute
@@ -550,13 +537,6 @@ declare module '@tanstack/react-router' {
       path: '/system/settings'
       fullPath: '/system/settings'
       preLoaderRoute: typeof SystemSettingsRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/system/server-logs': {
-      id: '/system/server-logs'
-      path: '/system/server-logs'
-      fullPath: '/system/server-logs'
-      preLoaderRoute: typeof SystemServerLogsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/system/secrets': {
@@ -800,7 +780,6 @@ const rootRouteChildren: RootRouteChildren = {
   InfrastructureVaultsSecretsRoute: InfrastructureVaultsSecretsRoute,
   SystemApiRoute: SystemApiRoute,
   SystemSecretsRoute: SystemSecretsRoute,
-  SystemServerLogsRoute: SystemServerLogsRoute,
   SystemSettingsRoute: SystemSettingsRoute,
   SystemUsersRoute: SystemUsersRoute,
   SystemWorkersRoute: SystemWorkersRoute,

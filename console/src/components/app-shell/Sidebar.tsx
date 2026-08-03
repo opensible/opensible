@@ -43,7 +43,6 @@ export function AppSidebar() {
     { to: "/system/users", label: t("nav.usersManagement"), icon: Users },
     { to: "/system/workers", label: t("nav.workers"), icon: Cpu },
     { to: "/system/secrets", label: t("nav.secretsManagement"), icon: ShieldCheck },
-    { to: "/system/server-logs", label: t("nav.serverLogs"), icon: ScrollText },
     { to: "/system/api", label: t("nav.api"), icon: Plug },
   ];
 
