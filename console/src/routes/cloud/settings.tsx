@@ -12,6 +12,7 @@ import { runGitSync } from "@/lib/git-sync";
 import { formatSyncTime } from "@/lib/format-time";
 import { useProjects } from "@/lib/project";
 import { EditStackSourceDialog } from "@/components/cloud/EditStackSourceDialog";
+import { GitAutosyncCard } from "@/components/project/GitAutosyncCard";
 import { useT } from "@/lib/i18n";
 
 export const Route = createFileRoute("/cloud/settings")({ component: SettingsPage });
@@ -120,6 +121,8 @@ function SettingsPage() {
         </CardContent>
       </Card>
 
+
+      <GitAutosyncCard projectId={currentId} sourceKey="stacks" sourceLabel="stacks" />
 
       <EditStackSourceDialog open={editOpen} onOpenChange={setEditOpen} projectId={currentId} />
     </div>

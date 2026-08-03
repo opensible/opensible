@@ -55,10 +55,8 @@ class PlaybookScheduler:
         self._lock_file_dir = Path(lock_file_dir)
         self._lock_file_dir.mkdir(parents=True, exist_ok=True)
         
-        # Check interval (seconds) - check every 30 seconds
-        # For more frequent schedules (every 5 minutes), this is sufficient
-        # For "now" cases, we check if time_until_next <= CHECK_INTERVAL, so 30s is acceptable
-        self.CHECK_INTERVAL = 30
+        # Check interval (seconds) - configurable at runtime via System Settings.
+        self.CHECK_INTERVAL = self._resolve_interval()
         
         # Track last execution time per schedule to avoid duplicate runs
         # Persist to file so it survives process restarts
@@ -70,6 +68,17 @@ class PlaybookScheduler:
         # Grace period after startup: don't run tasks immediately after restart
         # This prevents catch-up runs when scheduler restarts
         self.STARTUP_GRACE_PERIOD = 60  # Wait 60 seconds after startup before running tasks
+
+    def _resolve_interval(self) -> int:
+        try:
+            from utils.scheduler_settings import get_interval
+            return get_interval('playbook_scheduler_interval')
+        except Exception:
+            try:
+                return max(15, int(os.environ.get('PLAYBOOK_SCHEDULER_INTERVAL') or 60))
+            except (TypeError, ValueError):
+                return 60
+
     
     def _load_last_execution(self) -> Dict:
         """Load last execution timestamps from file"""
@@ -131,8 +140,9 @@ class PlaybookScheduler:
             except Exception as e:
                 logger.error(f"[PlaybookScheduler] Error in scheduler loop: {e}", exc_info=True)
             
-            # Sleep until next check
+            # Sleep until next check (re-resolved so UI changes apply live)
             if self._running:
+                self.CHECK_INTERVAL = self._resolve_interval()
                 time.sleep(self.CHECK_INTERVAL)
     
     def _check_and_run_schedules(self):

@@ -13,6 +13,7 @@ import { formatSyncTime } from "@/lib/format-time";
 import { useProjects } from "@/lib/project";
 import { EditRepoSourceDialog } from "@/components/infrastructure/EditRepoSourceDialog";
 import { HostStatusCacheCard } from "@/components/infrastructure/HostStatusCacheCard";
+import { GitAutosyncCard } from "@/components/project/GitAutosyncCard";
 import { useT } from "@/lib/i18n";
 
 export const Route = createFileRoute("/settings")({ component: InfraSettingsPage });
@@ -127,6 +128,8 @@ function InfraSettingsPage() {
           </div>
         </CardContent>
       </Card>
+
+      <GitAutosyncCard projectId={currentId} sourceKey="repo" sourceLabel="repository" />
 
       <HostStatusCacheCard projectId={currentId} />
 

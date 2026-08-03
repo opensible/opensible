@@ -3,12 +3,12 @@
 # ---------- build stage ----------
 FROM golang:1.22-bookworm AS build
 WORKDIR /src
-COPY worker-go/go.mod worker-go/go.sum* ./
+COPY worker/go.mod worker/go.sum* ./
 RUN go mod download || true
-COPY worker-go/ .
+COPY worker/ .
 # Static build for a slim runtime image.
 ENV CGO_ENABLED=0
-RUN go build -trimpath -ldflags="-s -w" -o /out/opensible-worker ./cmd/worker
+RUN go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker
     
     # ---------- runtime stage ----------
 FROM python:3.14-slim
@@ -51,7 +51,7 @@ WORKDIR /app
     COPY IaC /app/IaC
     
     # The Go worker binary.
-    COPY --from=build /out/opensible-worker /usr/local/bin/opensible-worker
+    COPY --from=build /out/worker /usr/local/bin/worker
     
     RUN mkdir -p /app/data
     ENV WORKER_SERVER_URL=http://backend:5000
