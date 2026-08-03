@@ -45,7 +45,7 @@ export const pages: Record<string, string> = {
   "page.playbooksRoles.subtitle": "Manage reusable Ansible playbooks and roles from one place.",
 
   // Infrastructure - templates
-  "page.templates.title": "Jobs & Templates",
+  "page.templates.title": "Stack Deployment & Templates",
   "page.templates.subtitle": "Reusable Build & Deployment Jobs — parameterized template runs with lifecycle actions (Init, Validate, Plan, Apply).",
 
   // Infrastructure - vaults & secrets

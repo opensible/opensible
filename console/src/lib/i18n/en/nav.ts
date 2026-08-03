@@ -5,7 +5,7 @@ export const nav: Record<string, string> = {
   "nav.system": "System",
   "nav.homeDashboard": "Home Dashboard",
   "nav.deployment": "Execution History",
-  "nav.jobsTemplates": "Deployment & Stack",
+  "nav.jobsTemplates": "Stack & Deployment",
   "nav.hosts": "Hosts & Groups",
   "nav.roles": "Roles",
   "nav.playbooks": "Playbooks",

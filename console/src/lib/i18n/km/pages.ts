@@ -34,7 +34,7 @@ export const pages: Record<string, string> = {
   "page.playbooksRoles.subtitle": "គ្រប់គ្រង Playbooks និង Roles របស់ Ansible ដែលអាចប្រើឡើងវិញក្នុងទីតាំងតែមួយ។",
 
 
-  "page.templates.title": "Jobs & Templates",
+  "page.templates.title": "Stack Deployment & Templates",
   "page.templates.subtitle": "Build & Deployment Jobs ដែលអាចប្រើឡើងវិញ — កែសម្រួលបានតាម template ជាមួយសកម្មភាព (Init, Validate, Plan, Apply)។",
 
   "page.vaults.title": "Vaults & Secrets",
