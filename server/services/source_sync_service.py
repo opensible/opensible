@@ -1653,9 +1653,27 @@ class SourceSyncService:
     #   <projects_dir>/<project_id>/stacks/
     # and mirrors the Git repo (optionally narrowed by `git.subdir`).
     # ------------------------------------------------------------------
-    def _mirror_copy(self, src: Path, dst: Path):
-        """Mirror src directory tree into dst, excluding any .git folder."""
+    GIT_EXCLUDE_DIRS = {'.git', '.terraform', '.terragrunt-cache'}
+    GIT_EXCLUDE_FILE_SUFFIXES = ('.tfstate', '.tfstate.backup', '.tfplan')
+
+    @classmethod
+    def _is_git_excluded(cls, name: str, is_dir: bool) -> bool:
+        if name in cls.GIT_EXCLUDE_DIRS:
+            return True
+        if not is_dir and name.endswith(cls.GIT_EXCLUDE_FILE_SUFFIXES):
+            return True
+        return False
+
+    def _mirror_copy(self, src: Path, dst: Path, exclude_heavy: bool = False):
+        """Mirror src directory tree into dst, excluding .git (and, when
+        exclude_heavy, OpenTofu caches/state that cannot be committed)."""
         dst.mkdir(parents=True, exist_ok=True)
+
+        def skip(name: str, is_dir: bool) -> bool:
+            if name == '.git':
+                return True
+            return exclude_heavy and self._is_git_excluded(name, is_dir)
+
         # Wipe existing contents (except .git, if any — shouldn't be present in storage)
         for item in list(dst.iterdir()):
             if item.name == '.git':
@@ -1666,12 +1684,21 @@ class SourceSyncService:
                 item.unlink()
         if not src.exists():
             return
+
+        ignore = None
+        if exclude_heavy:
+            def ignore(dirpath, names):  # noqa: F811
+                return [
+                    n for n in names
+                    if self._is_git_excluded(n, (Path(dirpath) / n).is_dir())
+                ]
+
         for item in src.iterdir():
-            if item.name == '.git':
+            if skip(item.name, item.is_dir()):
                 continue
             target = dst / item.name
             if item.is_dir():
-                shutil.copytree(item, target, dirs_exist_ok=True)
+                shutil.copytree(item, target, dirs_exist_ok=True, ignore=ignore)
             else:
                 shutil.copy2(item, target)
 
@@ -1756,8 +1783,20 @@ class SourceSyncService:
             git_target = (git_root / subdir) if subdir else git_root
             git_target.mkdir(parents=True, exist_ok=True)
 
-            logger.info(f"[STACKS PUSH] Mirror {storage_path} -> {git_target}")
-            self._mirror_copy(storage_path, git_target)
+            logger.info(f"[STACKS PUSH] Mirror {storage_path} -> {git_target} (excluding .terraform/state)")
+            self._mirror_copy(storage_path, git_target, exclude_heavy=True)
+
+            # Belt and braces: make sure the repo ignores provider caches/state
+            try:
+                gitignore = git_root / '.gitignore'
+                needed = ['.terraform/', '.terragrunt-cache/', '*.tfstate', '*.tfstate.backup', '*.tfplan']
+                existing = gitignore.read_text().splitlines() if gitignore.exists() else []
+                missing = [p for p in needed if p not in existing]
+                if missing:
+                    lines = existing + ([''] if existing and existing[-1].strip() else []) + missing
+                    gitignore.write_text('\n'.join(lines).strip() + '\n')
+            except Exception as e:
+                logger.warning(f"[STACKS PUSH] Could not update .gitignore: {e}")
 
             try:
                 git_env = self.git_source_manager._get_auth_env(project_id, auth_secret_id, repo_url)
@@ -1780,6 +1819,12 @@ class SourceSyncService:
                     if cur != ref:
                         subprocess.run(['git', 'checkout', ref], capture_output=True, text=True)
 
+                upstream = subprocess.run(['git', 'rev-parse', '--verify', f'origin/{ref}'], capture_output=True, text=True)
+                if upstream.returncode == 0:
+                    ahead = subprocess.run(['git', 'rev-list', '--count', f'origin/{ref}..HEAD'], capture_output=True, text=True)
+                    if (ahead.stdout or '0').strip() not in ('', '0'):
+                        subprocess.run(['git', 'reset', '--soft', f'origin/{ref}'], capture_output=True, text=True)
+
                 subprocess.run(['git', 'add', '-A'], check=True, capture_output=True, text=True)
                 status = subprocess.run(['git', 'status', '--porcelain'], capture_output=True, text=True)
                 if status.stdout.strip():
@@ -1794,7 +1839,15 @@ class SourceSyncService:
                 else:
                     p = subprocess.run(['git', 'push', 'origin', ref], capture_output=True, text=True, env=git_env)
                 if p.returncode != 0:
-                    return False, SyncErrorCode.SYNC_IO_ERROR.value, f"git push failed: {p.stderr.strip()}", None
+                    err = (p.stderr or '').strip()
+                    if 'exceed' in err and 'limit' in err:
+                        err = (
+                            "git push rejected: the remote refuses files over its blob size limit. "
+                            "This is usually a .terraform provider cache or a large state file already present "
+                            "in the remote branch history. OpenSible no longer pushes those, but existing history "
+                            "must be cleaned on the remote (or Git LFS enabled).\n\n" + err
+                        )
+                    return False, SyncErrorCode.SYNC_IO_ERROR.value, f"git push failed: {err}", None
 
                 rev = subprocess.run(['git', 'rev-parse', 'HEAD'], check=True, capture_output=True, text=True).stdout.strip()
                 return True, None, None, rev
