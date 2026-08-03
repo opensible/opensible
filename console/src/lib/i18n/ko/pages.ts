@@ -34,7 +34,7 @@ export const pages: Record<string, string> = {
   "page.playbooksRoles.subtitle": "재사용 가능한 Ansible 플레이북과 역할을 한 곳에서 관리하세요.",
 
 
-  "page.templates.title": "작업 & 템플릿",
+  "page.templates.title": "스택 배포 및 템플릿",
   "page.templates.subtitle": "재사용 가능한 Build & Deployment 작업 — 라이프사이클 액션(Init, Validate, Plan, Apply)이 있는 매개변수화된 템플릿 실행.",
 
   "page.vaults.title": "볼트 & 시크릿",

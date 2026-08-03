@@ -5,7 +5,7 @@ export const nav: Record<string, string> = {
   "nav.system": "시스템",
   "nav.homeDashboard": "홈 대시보드",
   "nav.deployment": "실행 이력",
-  "nav.jobsTemplates": "Deployment & Stack",
+  "nav.jobsTemplates": "스택 및 배포",
   "nav.hosts": "호스트 및 그룹",
   "nav.roles": "역할",
   "nav.playbooks": "플레이북",

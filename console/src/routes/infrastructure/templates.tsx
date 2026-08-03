@@ -182,7 +182,7 @@ function TemplatesPage() {
 
   return (
     <div className="space-y-4">
-      <Breadcrumbs items={[{ label: "Infrastructure" }, { label: "Jobs & Templates" }]} />
+      <Breadcrumbs items={[{ label: "Infrastructure" }, { label: "Stack Deployment & Templates" }]} />
       <div className="flex items-center justify-between gap-2 flex-wrap">
         <div>
           <h1 className="text-2xl font-semibold">{t("page.templates.title")}</h1>
