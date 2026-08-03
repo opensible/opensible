@@ -1,48 +1,57 @@
 import { useEffect, useState } from "react";
 import { Timer } from "lucide-react";
 import { toast } from "sonner";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { api } from "@/lib/api";
 
 const MIN = 30;
 const MAX = 24 * 60 * 60;
 
-type Settings = { ttl: number; autoCheck: boolean };
-
-function storageKey(projectId: string | null) {
-  return `ansible_host_status_cache:${projectId || "_"}`;
-}
-
-function load(projectId: string | null): Settings {
-  try {
-    const raw = localStorage.getItem(storageKey(projectId));
-    if (raw) {
-      const v = JSON.parse(raw);
-      return { ttl: Number(v.ttl) || 300, autoCheck: !!v.autoCheck };
-    }
-  } catch { /* ignore */ }
-  return { ttl: 300, autoCheck: false };
-}
+type HostSettings = { ttl_seconds: number; auto_check_all_hosts: boolean };
 
 export function HostStatusCacheCard({ projectId }: { projectId: string | null }) {
+  const qc = useQueryClient();
   const [ttl, setTtl] = useState<number>(300);
   const [autoCheck, setAutoCheck] = useState<boolean>(false);
+  const [saving, setSaving] = useState(false);
+
+  const settingsQ = useQuery({
+    enabled: !!projectId,
+    queryKey: ["project-host-settings", projectId],
+    queryFn: () =>
+      api<{ success: boolean; settings: HostSettings }>(
+        "GET",
+        `/api/projects/${encodeURIComponent(projectId!)}/host_settings`,
+      ),
+  });
 
   useEffect(() => {
-    const s = load(projectId);
-    setTtl(s.ttl);
-    setAutoCheck(s.autoCheck);
-  }, [projectId]);
+    const s = settingsQ.data?.settings;
+    if (s) {
+      setTtl(Number(s.ttl_seconds) || 300);
+      setAutoCheck(!!s.auto_check_all_hosts);
+    }
+  }, [settingsQ.data]);
 
-  function save() {
+  async function save() {
+    if (!projectId) return;
     const v = Math.max(MIN, Math.min(MAX, Math.floor(Number(ttl) || 0)));
     if (v !== ttl) setTtl(v);
+    setSaving(true);
     try {
-      localStorage.setItem(storageKey(projectId), JSON.stringify({ ttl: v, autoCheck }));
+      await api("PUT", `/api/projects/${encodeURIComponent(projectId)}/host_settings`, {
+        ttl_seconds: v,
+        auto_check_all_hosts: autoCheck,
+      });
+      qc.invalidateQueries({ queryKey: ["project-host-settings", projectId] });
       toast.success("Host status cache settings saved");
     } catch (e: any) {
       toast.error(e?.message || "Save failed");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -80,15 +89,18 @@ export function HostStatusCacheCard({ projectId }: { projectId: string | null })
             onChange={(e) => setAutoCheck(e.target.checked)}
           />
           <span>
-            <div className="font-medium">Auto-check all hosts on Hosts &amp; Groups open</div>
+            <div className="font-medium">Auto-check all hosts (background)</div>
             <div className="text-sm text-[var(--color-muted-foreground)]">
-              When enabled, the project will automatically run "Check all hosts" once when you open Hosts &amp; Groups.
+              When enabled, the server periodically re-checks hosts whose cached status has expired. Disabled by
+              default — checks stay manual.
             </div>
           </span>
         </label>
 
         <div className="flex justify-end">
-          <Button onClick={save} disabled={!projectId}>Save</Button>
+          <Button onClick={save} disabled={!projectId || saving || settingsQ.isLoading}>
+            {saving ? "Saving…" : "Save"}
+          </Button>
         </div>
       </CardContent>
     </Card>

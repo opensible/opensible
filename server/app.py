@@ -1922,7 +1922,7 @@ def get_project_hosts_list(project_id: str):
         return []
 
 
-_host_status_scheduler_interval = 60  # seconds
+_host_status_scheduler_interval = int(os.environ.get('HOST_STATUS_SCHEDULER_INTERVAL') or 300)  # seconds
 _host_status_scheduler_thread = None
 
 
