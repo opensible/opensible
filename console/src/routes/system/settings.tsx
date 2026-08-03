@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import { useT } from "@/lib/i18n";
 import opensibleLogo from "@/assets/opensible-logo.png";
+import { SchedulerIntervalsCard } from "@/components/system/SchedulerIntervalsCard";
 
 export const Route = createFileRoute("/system/settings")({ component: SettingsPage });
 
@@ -84,6 +85,7 @@ function GeneralTab() {
         <MaxUploadCard />
         <EncryptionKeyCard />
         <ExecutionHistoryCard />
+        <SchedulerIntervalsCard />
       </Section>
     </div>
   );
