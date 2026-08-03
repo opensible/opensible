@@ -30,7 +30,7 @@ Whether you are a platform engineer, SRE, homelabber or MSP operator, OpenSible 
 - **Ansible integration** - configure and maintain hosts after provisioning with playbook execution, inventory management and role-based workflows.
 - **Stack blueprints** - bootstrap new infrastructure quickly with pre-built, provider-aware templates for Docker, Kubernetes, observability, databases, CI/CD runners and more.
 - **OpenSible CI/CD** - build multi-stage pipelines that combine OpenTofu provisioning, Ansible configuration, approvals and custom scripts into repeatable, automated workflows.
-- **GitOps-first projects** - sync stacks and playbooks to Git, promote changes through branches, and track drift with version-controlled sources.
+- **GitOps-first projects** - sync stacks and playbooks to/from Git and track drift with version-controlled sources.
 - **Secrets and vaults** - encrypt sensitive values at rest, bind them to stacks and playbooks, and rotate credentials without touching source code.
 - **Execution engine** - a dedicated Go worker processes provision, plan, apply, destroy and refresh operations asynchronously, with full logs and history.
 - **Role-based access control** - assign roles to users, limit operations per role, and keep audit trails for compliance and troubleshooting.
