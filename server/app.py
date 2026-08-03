@@ -1922,7 +1922,19 @@ def get_project_hosts_list(project_id: str):
         return []
 
 
-_host_status_scheduler_interval = int(os.environ.get('HOST_STATUS_SCHEDULER_INTERVAL') or 300)  # seconds
+def _get_host_status_scheduler_interval():
+    """Interval (seconds) for the host-status background tick, configurable at runtime."""
+    try:
+        from utils.scheduler_settings import get_interval
+        return get_interval('host_status_scheduler_interval')
+    except Exception:
+        try:
+            return max(30, int(os.environ.get('HOST_STATUS_SCHEDULER_INTERVAL') or 300))
+        except (TypeError, ValueError):
+            return 300
+
+
+_host_status_scheduler_interval = _get_host_status_scheduler_interval()  # seconds
 _host_status_scheduler_thread = None
 
 
@@ -1930,7 +1942,7 @@ def _host_status_auto_check_loop():
     """ : N - TTL auto_check_all_hosts."""
     while True:
         try:
-            time.sleep(_host_status_scheduler_interval)
+            time.sleep(_get_host_status_scheduler_interval())
             host_status_auto_check_tick()
         except Exception as e:
             app.logger.warning(f"[host_status_auto_check_loop] {e}")
@@ -2833,10 +2845,18 @@ def start_recovery_task():
     """ recovery executions"""
     def recovery_worker():
         import time
-        recovery_interval = 60  # 1 ( recovery)
+        def _recovery_interval():
+            try:
+                from utils.scheduler_settings import get_interval
+                return get_interval('execution_recovery_interval')
+            except Exception:
+                try:
+                    return max(60, int(os.environ.get('EXECUTION_RECOVERY_INTERVAL') or 300))
+                except (TypeError, ValueError):
+                    return 300
         while True:
             try:
-                time.sleep(recovery_interval)
+                time.sleep(_recovery_interval())
                 server_recover_stuck_executions(
                     max_age_minutes=30,
                     grace_period_minutes=5,

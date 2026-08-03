@@ -4,6 +4,7 @@ AutosyncScheduler: Background scheduler for automatic source synchronization.
 Runs periodic sync operations based on project autosync configuration.
 """
 
+import os
 import time
 import threading
 import logging
@@ -33,8 +34,18 @@ class AutosyncScheduler:
         self._scheduler_thread = None
         self._lock = threading.Lock()
         
-        # Check interval (seconds)
-        self.CHECK_INTERVAL = 10  # Check every 10 seconds
+        # Check interval (seconds). Configurable at runtime via System Settings.
+        self.CHECK_INTERVAL = self._resolve_interval()
+
+    def _resolve_interval(self) -> int:
+        try:
+            from utils.scheduler_settings import get_interval
+            return get_interval('autosync_check_interval')
+        except Exception:
+            try:
+                return max(10, int(os.environ.get('AUTOSYNC_CHECK_INTERVAL') or 60))
+            except (TypeError, ValueError):
+                return 60
     
     def start(self):
         """Start the scheduler"""
@@ -63,7 +74,8 @@ class AutosyncScheduler:
             except Exception as e:
                 logger.error(f"Error in autosync scheduler loop: {e}", exc_info=True)
             
-            # Sleep until next check
+            # Sleep until next check (re-resolved so UI changes apply live)
+            self.CHECK_INTERVAL = self._resolve_interval()
             time.sleep(self.CHECK_INTERVAL)
     
     def _check_and_run_autosync(self):
