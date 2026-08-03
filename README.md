@@ -78,6 +78,12 @@ Read the [contributing guide](https://docs.opensible.com/opensiblev1/4-contribut
 
 Notice: For the initial release, AI was used for 60% of this project's development process to speed up tasks such as generating boilerplate code, writing tests, refactoring, and documentation. However, the architecture, design decisions, and implementation still required manual work, testing, and review.
 
+## Follow Us for Updates
+
+Stay updated with OpenSible news, releases, and community updates.
+
+LinkedIn: https://www.linkedin.com/showcase/opensible
+
 ## License
 
 OpenSible is released under the [AGPL-3.0 License](https://github.com/opensible/opensible/blob/main/LICENSE).
