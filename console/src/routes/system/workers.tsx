@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useEffect, ReactNode } from "react";
 import {
   Server, RefreshCw, Plus, Pencil, KeyRound, Ban, Check, Trash2,
-  Info, Copy, AlertTriangle, X, Circle,
+  Info, Copy, AlertTriangle, X, Circle, PlugZap,
 } from "lucide-react";
 import { Breadcrumbs } from "@/components/app-shell/Breadcrumbs";
 import { Button } from "@/components/ui/button";
@@ -48,6 +48,7 @@ function WorkersPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editing, setEditing] = useState<Worker | null>(null);
   const [tokenShow, setTokenShow] = useState<{ token: string; title: string } | null>(null);
+  const [connectOpen, setConnectOpen] = useState(false);
   const [confirm, setConfirm] = useState<{
     title: string; description: ReactNode; variant?: "default" | "destructive"; onConfirm: () => void;
   } | null>(null);
@@ -159,6 +160,7 @@ function WorkersPage() {
                       </td>
                       <td className="px-6 py-3">
                         <div className="flex justify-end gap-1">
+                          <IconBtn title="Connect worker agent" onClick={() => setConnectOpen(true)}><PlugZap className="h-3.5 w-3.5" /></IconBtn>
                           <IconBtn title="Edit" onClick={() => setEditing(w)}><Pencil className="h-3.5 w-3.5" /></IconBtn>
                           <IconBtn
                             title="Rotate token"
@@ -206,23 +208,9 @@ function WorkersPage() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center gap-2"><Info className="h-4 w-4" /> How to connect a worker agent</CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-[var(--color-muted-foreground)] space-y-2">
-          <p>1. Create a worker above and copy the token.</p>
-          <p>2. Set environment variables:</p>
-          <pre className="bg-[var(--color-muted)] rounded-md p-3 text-xs text-[var(--color-foreground)] overflow-x-auto">
-{`export WORKER_SERVER_URL=${typeof window !== "undefined" ? window.location.origin : "https://platform"}
-export WORKER_TOKEN=your-token-here`}
-          </pre>
-          <p>3. Run the worker:</p>
-          <pre className="bg-[var(--color-muted)] rounded-md p-3 text-xs text-[var(--color-foreground)] overflow-x-auto">{`cd web
-python3 worker.py`}</pre>
-          <p className="text-xs">Or use a token file: create <code className="font-mono">web/worker/.token</code> with the worker token.</p>
-        </CardContent>
-      </Card>
+      {connectOpen && <ConnectWorkerPanel onClose={() => setConnectOpen(false)} />}
+
+
 
       {createOpen && (
         <CreateWorkerDialog
@@ -404,5 +392,36 @@ function TokenDialog({ token, title, onClose }: { token: string; title: string; 
         </div>
       </div>
     </ModalShell>
+  );
+}
+
+function ConnectWorkerPanel({ onClose }: { onClose: () => void }) {
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://platform";
+  return (
+    <div className="fixed inset-0 z-50 flex justify-end bg-black/50" onClick={onClose}>
+      <div
+        className="h-full w-full max-w-md bg-[var(--color-card)] border-l border-[var(--color-border)] shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)]">
+          <h3 className="text-base font-semibold flex items-center gap-2">
+            <Info className="h-4 w-4" /> How to connect a worker agent
+          </h3>
+          <button onClick={onClose} className="p-1 rounded hover:bg-[var(--color-muted)]"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="p-5 text-sm text-[var(--color-muted-foreground)] space-y-2">
+          <p>1. Create a worker above and copy the token.</p>
+          <p>2. Set environment variables:</p>
+          <pre className="bg-[var(--color-muted)] rounded-md p-3 text-xs text-[var(--color-foreground)] overflow-x-auto">
+{`export WORKER_SERVER_URL=${origin}
+export WORKER_TOKEN=your-token-here`}
+          </pre>
+          <p>3. Run the worker:</p>
+          <pre className="bg-[var(--color-muted)] rounded-md p-3 text-xs text-[var(--color-foreground)] overflow-x-auto">{`cd web
+python3 worker.py`}</pre>
+          <p className="text-xs">Or use a token file: create <code className="font-mono">web/worker/.token</code> with the worker token.</p>
+        </div>
+      </div>
+    </div>
   );
 }
