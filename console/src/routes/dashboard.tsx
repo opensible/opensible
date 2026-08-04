@@ -50,44 +50,44 @@ function Dashboard() {
 
   return (
     <div className="space-y-6">
-      <Breadcrumbs items={[{ label: "Home Dashboard" }]} />
+      <Breadcrumbs items={[{ label: t("nav.homeDashboard") }]} />
 
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold">{t("page.home.title")}</h1>
           <p className="text-sm text-[var(--color-muted-foreground)] mt-1">{t("page.home.subtitle")}</p>
         </div>
-        <Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> New Project</Button>
+        <Button onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4" /> {t("common.newProject")}</Button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon={<FolderKanban className="h-5 w-5" />}
-          label="Total Projects"
+          label={t("page.home.totalProjects")}
           value={projectsLoading ? "…" : activeProjects}
-          hint={current ? `Active: ${current.name}` : "No active project"}
+          hint={current ? t("page.home.activeProject", { name: current.name }) : t("page.home.noActiveProject")}
           tint="primary"
         />
         <StatCard
           icon={<Cloud className="h-5 w-5" />}
-          label="Cloud Provisioning"
+          label={t("page.home.cloudProvisioning")}
           value={stacksQ.isLoading ? "…" : stacks.length}
-          hint="OpenTofu stacks"
+          hint={t("page.home.opentofuStacks")}
           tint="success"
           to="/cloud/stacks"
         />
         <StatCard
           icon={<BookOpen className="h-5 w-5" />}
-          label="Infrastructure"
+          label={t("page.home.infrastructure")}
           value={playbooksQ.isLoading ? "…" : playbooks.length}
-          hint="Ansible playbooks"
+          hint={t("page.home.ansiblePlaybooks")}
           tint="accent"
         />
         <StatCard
           icon={<Activity className="h-5 w-5" />}
-          label="Active Runs"
+          label={t("page.home.activeRuns")}
           value={runsQ.isLoading ? "…" : runningCount}
-          hint={`${runs.length} total in history`}
+          hint={t("page.home.totalInHistory", { count: runs.length })}
           tint="warning"
           to="/cloud/summary"
         />
@@ -96,14 +96,14 @@ function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2"><Layers className="h-4 w-4" /> Recent Stacks</CardTitle>
+            <CardTitle className="text-base flex items-center gap-2"><Layers className="h-4 w-4" /> {t("page.home.recentStacks")}</CardTitle>
             <Link to="/cloud/stacks" className="text-xs text-[var(--color-primary)] hover:underline inline-flex items-center gap-1">
-              View all <ArrowRight className="h-3 w-3" />
+              {t("page.home.viewAll")} <ArrowRight className="h-3 w-3" />
             </Link>
           </CardHeader>
           <CardContent className="p-0">
             {stacks.length === 0 ? (
-              <EmptyRow label="No stacks yet" cta={<Link to="/cloud/stacks/new" className="text-[var(--color-primary)] hover:underline">Create a stack</Link>} />
+              <EmptyRow label={t("page.home.noStacks")} cta={<Link to="/cloud/stacks/new" className="text-[var(--color-primary)] hover:underline">{t("page.home.createStack")}</Link>} />
             ) : (
               <ul className="divide-y divide-[var(--color-border)]">
                 {stacks.slice(0, 6).map(s => (
@@ -125,14 +125,14 @@ function Dashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle className="text-base flex items-center gap-2"><FolderKanban className="h-4 w-4" /> Your Projects</CardTitle>
+            <CardTitle className="text-base flex items-center gap-2"><FolderKanban className="h-4 w-4" /> {t("page.home.yourProjects")}</CardTitle>
             <button onClick={() => setCreateOpen(true)} className="text-xs text-[var(--color-primary)] hover:underline inline-flex items-center gap-1">
-              <Plus className="h-3 w-3" /> New
+              <Plus className="h-3 w-3" /> {t("page.home.new")}
             </button>
           </CardHeader>
           <CardContent className="p-0">
             {projects.length === 0 ? (
-              <EmptyRow label="No projects yet" cta={<button onClick={() => setCreateOpen(true)} className="text-[var(--color-primary)] hover:underline">Create your first project</button>} />
+              <EmptyRow label={t("page.home.noProjects")} cta={<button onClick={() => setCreateOpen(true)} className="text-[var(--color-primary)] hover:underline">{t("page.home.createFirstProject")}</button>} />
             ) : (
               <ul className="divide-y divide-[var(--color-border)]">
                 {projects.slice(0, 6).map(p => (
@@ -144,7 +144,7 @@ function Dashboard() {
                       <div className="text-sm font-medium truncate">{p.name}</div>
                       {p.description && <div className="text-xs text-[var(--color-muted-foreground)] truncate">{p.description}</div>}
                     </div>
-                    {p.id === currentId && <Badge variant="success" className="shrink-0">Active</Badge>}
+                    {p.id === currentId && <Badge variant="success" className="shrink-0">{t("common.active")}</Badge>}
                   </li>
                 ))}
               </ul>
