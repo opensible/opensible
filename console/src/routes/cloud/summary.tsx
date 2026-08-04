@@ -33,14 +33,14 @@ type Run = {
 
 type RunDetail = Run & { log?: string };
 
-function fmtRel(ts?: number): string {
+function fmtRel(ts: number | undefined, t: (k: string, v?: Record<string, string | number>) => string): string {
   if (!ts) return "—";
   const diff = Math.floor(Date.now() / 1000) - Number(ts);
-  if (diff < 5) return "just now";
-  if (diff < 60) return diff + "s ago";
-  if (diff < 3600) return Math.floor(diff / 60) + "m ago";
-  if (diff < 86400) return Math.floor(diff / 3600) + "h ago";
-  return Math.floor(diff / 86400) + "d ago";
+  if (diff < 5) return t("summary.justNow");
+  if (diff < 60) return t("summary.agoSeconds", { n: diff });
+  if (diff < 3600) return t("summary.agoMinutes", { n: Math.floor(diff / 60) });
+  if (diff < 86400) return t("summary.agoHours", { n: Math.floor(diff / 3600) });
+  return t("summary.agoDays", { n: Math.floor(diff / 86400) });
 }
 function fmtDateTime(ts?: number): string {
   if (!ts) return "—";
@@ -117,12 +117,12 @@ function SummaryPage() {
   };
 
   const statCards = [
-    { key: "total", label: "Total", value: counts.total, tone: "neutral" },
-    { key: "running", label: "Running", value: counts.running, tone: "info" },
-    { key: "queued", label: "Queued", value: counts.queued, tone: "muted" },
-    { key: "succeeded", label: "Succeeded", value: counts.succeeded, tone: "success" },
-    { key: "failed", label: "Failed", value: counts.failed, tone: "danger" },
-  ] as const;
+    { key: "total", label: t("summary.total"), value: counts.total, tone: "neutral" },
+    { key: "running", label: t("summary.running"), value: counts.running, tone: "info" },
+    { key: "queued", label: t("summary.queued"), value: counts.queued, tone: "muted" },
+    { key: "succeeded", label: t("summary.succeeded"), value: counts.succeeded, tone: "success" },
+    { key: "failed", label: t("summary.failed"), value: counts.failed, tone: "danger" },
+  ];
   const toneClass = (t: string) =>
     t === "success" ? "text-emerald-600" :
     t === "danger" ? "text-red-600" :
@@ -132,13 +132,13 @@ function SummaryPage() {
 
   return (
     <div className="space-y-6">
-      <Breadcrumbs items={[{ label: "Provisioning Summary" }]} />
+      <Breadcrumbs items={[{ label: t("nav.summary") }]} />
       <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold">{t("page.summary.title")}</h1>
           <p className="text-sm text-[var(--color-muted-foreground)] mt-1">{t("page.summary.subtitle")}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={loadRuns}><RefreshCw className="h-4 w-4" /> Refresh</Button>
+        <Button variant="outline" size="sm" onClick={loadRuns}><RefreshCw className="h-4 w-4" /> {t("common.refresh")}</Button>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
@@ -154,38 +154,38 @@ function SummaryPage() {
       <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-card)] p-3 space-y-3">
         <div className="flex flex-wrap items-center gap-3">
           <Input
-            placeholder="Search stack, project, env, provider, ID…"
+            placeholder={t("summary.searchPlaceholder")}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className="max-w-xs"
           />
           <select className="h-9 px-2 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] text-sm" value={status} onChange={(e) => setStatus(e.target.value)}>
-            <option value="">All statuses</option>
+            <option value="">{t("summary.allStatuses")}</option>
             <option>running</option><option>queued</option>
             <option>succeeded</option><option>failed</option><option>canceled</option>
           </select>
           <select className="h-9 px-2 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] text-sm" value={action} onChange={(e) => setAction(e.target.value)}>
-            <option value="">All actions</option>
+            <option value="">{t("summary.allActions")}</option>
             <option>init</option><option>plan</option><option>apply</option>
             <option>destroy</option><option>validate</option><option>fmt</option><option>refresh</option>
           </select>
           <select className="h-9 px-2 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] text-sm" value={providerFilter} onChange={(e) => setProviderFilter(e.target.value)}>
-            <option value="">All providers</option>
+            <option value="">{t("summary.allProviders")}</option>
             {providerOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           <select className="h-9 px-2 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] text-sm" value={cloudProjectFilter} onChange={(e) => setCloudProjectFilter(e.target.value)}>
-            <option value="">All cloud projects</option>
+            <option value="">{t("summary.allCloudProjects")}</option>
             {cloudProjectOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           <select className="h-9 px-2 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] text-sm" value={envFilter} onChange={(e) => setEnvFilter(e.target.value)}>
-            <option value="">All environments</option>
+            <option value="">{t("summary.allEnvironments")}</option>
             {envOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
           <select className="h-9 px-2 rounded-md border border-[var(--color-border)] bg-[var(--color-background)] text-sm" value={stackFilter} onChange={(e) => setStackFilter(e.target.value)}>
-            <option value="">All stacks</option>
+            <option value="">{t("summary.allStacks")}</option>
             {stackOptions.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
-          <span className="ml-auto text-xs text-[var(--color-muted-foreground)]">{filtered.length} of {runs.length} runs</span>
+          <span className="ml-auto text-xs text-[var(--color-muted-foreground)]">{t("summary.runsCount", { shown: filtered.length, total: runs.length })}</span>
         </div>
       </div>
 
@@ -195,21 +195,21 @@ function SummaryPage() {
           <table className="w-full text-sm">
             <thead className="bg-[var(--color-muted)]/40 text-xs uppercase tracking-wide text-[var(--color-muted-foreground)]">
               <tr>
-                <th className="text-left px-3 py-2.5 font-medium">Provider</th>
-                <th className="text-left px-3 py-2.5 font-medium">Project</th>
-                <th className="text-left px-3 py-2.5 font-medium">Env</th>
-                <th className="text-left px-3 py-2.5 font-medium">Date / Time</th>
-                <th className="text-left px-3 py-2.5 font-medium">Job</th>
-                <th className="text-left px-3 py-2.5 font-medium">Duration</th>
-                <th className="text-left px-3 py-2.5 font-medium">Age</th>
-                <th className="text-left px-3 py-2.5 font-medium">Status</th>
+                <th className="text-left px-3 py-2.5 font-medium">{t("summary.col.provider")}</th>
+                <th className="text-left px-3 py-2.5 font-medium">{t("summary.col.project")}</th>
+                <th className="text-left px-3 py-2.5 font-medium">{t("summary.col.env")}</th>
+                <th className="text-left px-3 py-2.5 font-medium">{t("summary.col.dateTime")}</th>
+                <th className="text-left px-3 py-2.5 font-medium">{t("summary.col.job")}</th>
+                <th className="text-left px-3 py-2.5 font-medium">{t("summary.col.duration")}</th>
+                <th className="text-left px-3 py-2.5 font-medium">{t("summary.col.age")}</th>
+                <th className="text-left px-3 py-2.5 font-medium">{t("summary.col.status")}</th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 && (
                 <tr>
                   <td colSpan={8} className="px-3 py-10 text-center text-[var(--color-muted-foreground)]">
-                    No runs match the current filters.
+                    {t("summary.noRuns")}
                   </td>
                 </tr>
               )}
@@ -230,7 +230,7 @@ function SummaryPage() {
                     <div className="text-[10px] text-[var(--color-muted-foreground)] font-mono">{r.run_id.slice(0, 12)}</div>
                   </td>
                   <td className="px-3 py-2.5 whitespace-nowrap text-[var(--color-muted-foreground)]">{fmtDur(r.started_at, r.finished_at)}</td>
-                  <td className="px-3 py-2.5 whitespace-nowrap text-[var(--color-muted-foreground)]">{fmtRel(r.mtime || r.started_at)}</td>
+                  <td className="px-3 py-2.5 whitespace-nowrap text-[var(--color-muted-foreground)]">{fmtRel(r.mtime || r.started_at, t)}</td>
                   <td className="px-3 py-2.5"><Badge variant={statusToVariant(r.status)}>{r.status}</Badge></td>
                 </tr>
               ))}
@@ -262,6 +262,7 @@ function SummaryPage() {
 export function ProvisioningLogDialog({
   stack, runId, onClose,
 }: { stack: string; runId: string; onClose: () => void }) {
+  const t = useT();
   const detailQuery = useQuery({
     queryKey: qk.run(stack, runId),
     queryFn: () => api<RunDetail>("GET", `/api/cloud/stacks/${encodeURIComponent(stack)}/runs/${encodeURIComponent(runId)}`),
@@ -290,14 +291,14 @@ export function ProvisioningLogDialog({
             <Terminal className="h-4 w-4 text-[var(--color-muted-foreground)] shrink-0" />
             <div className="min-w-0">
               <h2 className="text-base font-semibold truncate">
-                {detail ? <>tofu {detail.action} · {detail.stack}</> : "Loading run…"}
+                {detail ? <>tofu {detail.action} · {detail.stack}</> : t("summary.loadingRun")}
               </h2>
               <div className="text-xs text-[var(--color-muted-foreground)] flex items-center gap-2 mt-0.5 flex-wrap">
                 <span className="font-mono truncate">{runId}</span>
                 {detail?.status && <Badge variant={statusToVariant(detail.status)} className="text-[10px]">{detail.status}</Badge>}
                 {detail?.cloud_project && <span>· {detail.cloud_project}</span>}
                 {detail?.env && <span>· env: {detail.env}</span>}
-                {detail?.returncode != null && <span>· exit {detail.returncode}</span>}
+                {detail?.returncode != null && <span>· {t("summary.exit")} {detail.returncode}</span>}
               </div>
             </div>
           </div>
@@ -318,7 +319,7 @@ export function ProvisioningLogDialog({
             <RunFlowGraph action={detail.action} log={detail.log || ""} status={detail.status} />
           )}
           <InventorySection stack={stack} />
-          <LogViewer text={detail?.log || "Loading log…"} className="max-h-[60vh]" />
+          <LogViewer text={detail?.log || t("summary.loadingLog")} className="max-h-[60vh]" />
         </div>
       </div>
     </div>
@@ -336,6 +337,7 @@ type VM = {
 type Inventory = { vms: VM[]; count: number; generated_at?: number; state_present?: boolean; message?: string };
 
 function InventorySection({ stack }: { stack: string }) {
+  const t = useT();
   const [open, setOpen] = useState(true);
   const { data, isLoading, isFetching, refetch, error } = useQuery({
     queryKey: ["cloud", "stack", stack, "inventory"],
@@ -349,8 +351,8 @@ function InventorySection({ stack }: { stack: string }) {
       <div className="flex items-center justify-between px-3 py-2 border-b border-[var(--color-border)] bg-[var(--color-muted)]/30">
         <button onClick={() => setOpen((v) => !v)} className="text-sm font-medium flex items-center gap-2">
           <span>{open ? "▾" : "▸"}</span>
-          VM Inventory
-          {data && <span className="text-xs text-[var(--color-muted-foreground)]">· {data.count} VM{data.count === 1 ? "" : "s"}</span>}
+          {t("summary.vmInventory")}
+          {data && <span className="text-xs text-[var(--color-muted-foreground)]">· {t(data.count === 1 ? "summary.vmCountOne" : "summary.vmCount", { count: data.count })}</span>}
         </button>
         {open && (
           <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
@@ -360,11 +362,11 @@ function InventorySection({ stack }: { stack: string }) {
       </div>
       {open && (
         <div className="p-3">
-          {isLoading && <div className="text-xs text-[var(--color-muted-foreground)]">Loading inventory…</div>}
-          {error && <div className="text-xs text-[var(--color-destructive)]">{(error as any)?.message || "Failed to load inventory."}</div>}
+          {isLoading && <div className="text-xs text-[var(--color-muted-foreground)]">{t("summary.loadingInventory")}</div>}
+          {error && <div className="text-xs text-[var(--color-destructive)]">{(error as any)?.message || t("summary.inventoryError")}</div>}
           {!isLoading && !error && vms.length === 0 && (
             <div className="text-xs text-[var(--color-muted-foreground)]">
-              {data?.message || "No VMs in tfstate yet."}
+              {data?.message || t("summary.noVms")}
             </div>
           )}
           {vms.length > 0 && (
@@ -372,15 +374,15 @@ function InventorySection({ stack }: { stack: string }) {
               <table className="w-full text-xs">
                 <thead className="bg-[var(--color-muted)] text-[var(--color-muted-foreground)] uppercase tracking-wide">
                   <tr>
-                    <th className="text-left px-3 py-2 font-medium">Hostname</th>
-                    <th className="text-left px-3 py-2 font-medium">Status</th>
-                    <th className="text-left px-3 py-2 font-medium">Private IP</th>
-                    <th className="text-left px-3 py-2 font-medium">Public IP</th>
-                    <th className="text-left px-3 py-2 font-medium">Subnet</th>
-                    <th className="text-left px-3 py-2 font-medium">VPC</th>
-                    <th className="text-left px-3 py-2 font-medium">AZ</th>
-                    <th className="text-left px-3 py-2 font-medium">Flavor</th>
-                    <th className="text-left px-3 py-2 font-medium">Disk</th>
+                    <th className="text-left px-3 py-2 font-medium">{t("summary.vm.hostname")}</th>
+                    <th className="text-left px-3 py-2 font-medium">{t("summary.vm.status")}</th>
+                    <th className="text-left px-3 py-2 font-medium">{t("summary.vm.privateIp")}</th>
+                    <th className="text-left px-3 py-2 font-medium">{t("summary.vm.publicIp")}</th>
+                    <th className="text-left px-3 py-2 font-medium">{t("summary.vm.subnet")}</th>
+                    <th className="text-left px-3 py-2 font-medium">{t("summary.vm.vpc")}</th>
+                    <th className="text-left px-3 py-2 font-medium">{t("summary.vm.az")}</th>
+                    <th className="text-left px-3 py-2 font-medium">{t("summary.vm.flavor")}</th>
+                    <th className="text-left px-3 py-2 font-medium">{t("summary.vm.disk")}</th>
                   </tr>
                 </thead>
                 <tbody>
