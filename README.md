@@ -10,6 +10,7 @@
 [![Docs](https://img.shields.io/badge/Docs-Wiki-10b981)](https://github.com/opensible/opensible/wiki)
 
 ![OpenSible Banner](https://cdn.opensible.com/banners/readme-banner.png)
+![OpenSible Stack Deployment](https://cdn.opensible.com/banners/stack-deployment.png)
 
 ---
 
