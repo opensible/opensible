@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge, statusToVariant } from "@/components/ui/badge";
 import { LogViewer } from "@/components/cloud/LogViewer";
+import { PlanDiff } from "@/components/cloud/PlanDiff";
 import { RunFlowGraph } from "@/components/cloud/RunFlowGraph";
 import { api } from "@/lib/api";
 import { qk } from "@/lib/query";
@@ -318,6 +319,7 @@ export function ProvisioningLogDialog({
           {detail?.action && (
             <RunFlowGraph action={detail.action} log={detail.log || ""} status={detail.status} />
           )}
+          <PlanDiff log={detail?.log || ""} action={detail?.action} />
           <InventorySection stack={stack} />
           <LogViewer text={detail?.log || t("summary.loadingLog")} className="max-h-[60vh]" />
         </div>

@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, statusToVariant } from "@/components/ui/badge";
 import { VmInventoryDialog } from "@/components/cloud/VmInventoryDialog";
 import { RunFlowGraph } from "@/components/cloud/RunFlowGraph";
+import { PlanDiff } from "@/components/cloud/PlanDiff";
 import { ProvisioningLogDialog } from "@/routes/cloud/summary";
 import { api } from "@/lib/api";
 import { qk } from "@/lib/query";
@@ -477,11 +478,14 @@ function StackDetail() {
 
 
       {(lastAction || running) && (
-        <RunFlowGraph
-          action={running || lastAction || "plan"}
-          log={flowLog}
-          status={runStatus.status}
-        />
+        <>
+          <RunFlowGraph
+            action={running || lastAction || "plan"}
+            log={flowLog}
+            status={runStatus.status}
+          />
+          <PlanDiff log={flowLog} action={running || lastAction || undefined} />
+        </>
       )}
 
       <Card>
