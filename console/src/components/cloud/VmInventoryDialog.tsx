@@ -43,7 +43,7 @@ export function VmInventoryDialog({ stackId, onClose }: { stackId: string; onClo
           <div className="flex items-center gap-3">
             <Boxes className="h-5 w-5" />
             <div>
-              <h2 className="text-lg font-semibold">VM Inventory · {stackId}</h2>
+              <h2 className="text-lg font-semibold">Inventory Resources · {stackId}</h2>
               <p className="text-xs text-[var(--color-muted-foreground)]">
                 {data?.generated_at
                   ? `Last refreshed: ${new Date(data.generated_at * 1000).toLocaleString()}`
