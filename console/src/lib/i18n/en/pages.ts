@@ -186,7 +186,7 @@ export const pages: Record<string, string> = {
   "summary.loadingRun": "Loading run…",
   "summary.loadingLog": "Loading log…",
   "summary.exit": "exit",
-  "summary.vmInventory": "VM Inventory",
+  "summary.vmInventory": "Inventory Resources",
   "summary.vmCount": "{count} VMs",
   "summary.vmCountOne": "{count} VM",
   "summary.loadingInventory": "Loading inventory…",

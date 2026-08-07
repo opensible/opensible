@@ -584,6 +584,7 @@ def _list_stacks(project_id: Optional[str]) -> List[Dict[str, Any]]:
             "drift_enabled": meta.get("drift_enabled") is True,
             "drift_status": (_drift_status(project_id, entry.name)["status"]
                              if meta.get("drift_enabled") is True else "disabled"),
+            "policy_enabled": meta.get("policy_enabled") is True,
         })
     return out
 
@@ -892,6 +893,10 @@ def _create_execution(project_id: Optional[str], stack: str, action: str, worker
         "secret_keys": list(_secret_keys_for(provider)),
         "env": {"TF_IN_AUTOMATION": "1"},
     }
+    # Policy-as-code gate: only shipped to the worker when the stack opted in,
+    # so stacks with the gate off pay exactly zero extra cost.
+    if _policy_enabled(project_id, stack) and action in ("plan", "apply", "destroy"):
+        run_params["policy"] = _policy_config(project_id, stack)
     if not worker_id:
         # Tofu needs the backend-local IaC tree at stack_dir; auto-pin to a
         # co-located worker (tagged 'local' or 'default') so multi-worker
@@ -1060,6 +1065,45 @@ def drift_set(name):
         return jsonify({"error": "Body must include boolean 'enabled'."}), 400
     _save_meta(pid, name, drift_enabled=enabled)
     return jsonify({"ok": True, **_drift_status(pid, name)})
+
+
+# ---------------------------------------------------------------------------
+# Policy-as-code gate (opt-in per stack, disabled by default)
+# ---------------------------------------------------------------------------
+
+try:
+    from services.cloud_policy import (
+        policy_config_from_meta as _policy_config_from_meta,
+        policy_enabled_from_meta as _policy_enabled_from_meta,
+        register_policy_routes as _register_policy_routes,
+    )
+except ImportError:  # pragma: no cover
+    from .cloud_policy import (  # type: ignore
+        policy_config_from_meta as _policy_config_from_meta,
+        policy_enabled_from_meta as _policy_enabled_from_meta,
+        register_policy_routes as _register_policy_routes,
+    )
+
+
+def _policy_enabled(project_id: Optional[str], name: str) -> bool:
+    return _policy_enabled_from_meta(_read_meta(project_id, name))
+
+
+def _policy_config(project_id: Optional[str], name: str) -> Dict[str, Any]:
+    return _policy_config_from_meta(_read_meta(project_id, name))
+
+
+_register_policy_routes(
+    bp,
+    require_auth=require_auth,
+    get_project_id=lambda: _get_project_id(),
+    valid_name=lambda n: _valid_name(n),
+    stack_dir=lambda pid, n: _stack_dir(pid, n),
+    read_meta=lambda pid, n: _read_meta(pid, n),
+    save_meta=lambda pid, n, **kw: _save_meta(pid, n, **kw),
+    project_executions_dir=lambda pid: _project_executions_dir(pid),
+)
+
 
 
 

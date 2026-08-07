@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, CheckCircle2, Download, Search, Rocket, Bomb, RefreshCcw, RefreshCw, Clock,
-  GitBranch, GitPullRequestArrow, Edit, Trash2, KeyRound, AlertTriangle, Boxes, Github, Radar,
+  GitBranch, GitPullRequestArrow, Edit, Trash2, KeyRound, AlertTriangle, Boxes, Github, Radar, Settings, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Breadcrumbs } from "@/components/app-shell/Breadcrumbs";
@@ -12,6 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, statusToVariant } from "@/components/ui/badge";
 import { VmInventoryDialog } from "@/components/cloud/VmInventoryDialog";
 import { RunFlowGraph } from "@/components/cloud/RunFlowGraph";
+import { PlanDiff } from "@/components/cloud/PlanDiff";
+import { PolicyGateCard } from "@/components/cloud/PolicyGateCard";
 import { ProvisioningLogDialog } from "@/routes/cloud/summary";
 import { api } from "@/lib/api";
 import { qk } from "@/lib/query";
@@ -96,6 +98,8 @@ function StackDetail() {
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [flowLog, setFlowLog] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -353,8 +357,12 @@ function StackDetail() {
           </Button>
         )}
         <Button variant="outline" onClick={() => setShowInventory(true)}>
-          <Boxes className="h-4 w-4" /> VM Inventory
+          <Boxes className="h-4 w-4" /> Inventory Resources
         </Button>
+        <Button variant="outline" onClick={() => setSettingsOpen(true)}>
+          <Settings className="h-4 w-4" /> Settings
+        </Button>
+
         {runStatus.status && (
           <div className="ml-auto text-xs flex items-center gap-2">
             <Badge variant={statusToVariant(runStatus.status)}>{runStatus.status}</Badge>
@@ -403,7 +411,26 @@ function StackDetail() {
         </div>
       )}
 
+      {settingsOpen && (
+      <div className="fixed inset-0 z-50 flex justify-end bg-black/50" onClick={() => setSettingsOpen(false)}>
+      <div
+        className="h-full w-full max-w-xl bg-[var(--color-card)] border-l border-[var(--color-border)] shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)] sticky top-0 bg-[var(--color-card)] z-10">
+          <div>
+            <h3 className="text-base font-semibold flex items-center gap-2">
+              <Settings className="h-4 w-4" /> Settings
+            </h3>
+            <p className="text-xs text-[var(--color-muted-foreground)] mt-0.5 font-mono">{stackId}</p>
+          </div>
+          <button onClick={() => setSettingsOpen(false)} className="p-1 rounded hover:bg-[var(--color-muted)]" aria-label="Close settings">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="p-4 space-y-4">
       <Card>
+
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>
             <CardTitle className="text-base flex items-center gap-2">
@@ -474,14 +501,26 @@ function StackDetail() {
         </CardContent>
       </Card>
 
+      <PolicyGateCard stackId={stackId} />
+        </div>
+      </div>
+      </div>
+      )}
+
+
+
+
 
 
       {(lastAction || running) && (
-        <RunFlowGraph
-          action={running || lastAction || "plan"}
-          log={flowLog}
-          status={runStatus.status}
-        />
+        <>
+          <RunFlowGraph
+            action={running || lastAction || "plan"}
+            log={flowLog}
+            status={runStatus.status}
+          />
+          <PlanDiff log={flowLog} action={running || lastAction || undefined} />
+        </>
       )}
 
       <Card>

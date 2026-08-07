@@ -858,7 +858,7 @@ function ReportsTab() {
               )}
               {!list.isLoading && filtered.length === 0 && (
                 <tr><td colSpan={9} className="px-4 py-8 text-center text-muted-foreground">
-                  No cost reports yet. Run <strong>Apply</strong> on a stack and open <strong>VM Inventory</strong> — a timestamped report will appear here automatically.
+                  No cost reports yet. Run <strong>Apply</strong> on a stack and open <strong>Inventory Resources</strong> — a timestamped report will appear here automatically.
                 </td></tr>
               )}
               {filtered.map((r) => (

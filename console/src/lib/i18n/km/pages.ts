@@ -168,7 +168,7 @@ export const pages: Record<string, string> = {
   "summary.loadingRun": "កំពុងផ្ទុកដំណើរការ…",
   "summary.loadingLog": "កំពុងផ្ទុកកំណត់ហេតុ…",
   "summary.exit": "លទ្ធផលចាកចេញ",
-  "summary.vmInventory": "បញ្ជី VM",
+  "summary.vmInventory": "បញ្ជីធនធាន",
   "summary.vmCount": "{count} VM",
   "summary.vmCountOne": "{count} VM",
   "summary.loadingInventory": "កំពុងផ្ទុកបញ្ជី…",
