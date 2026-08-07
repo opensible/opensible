@@ -262,14 +262,21 @@ func executeTofuRun(executionID string, execData map[string]any, projectID strin
 	var returnCode *int
 	var credsPath string
 
+	policyCfg := parsePolicyConfig(runParams["policy"])
+	var policyRes *PolicyResult
+
 	defer func() {
 		if credsPath != "" {
 			_ = os.Remove(credsPath)
 		}
 		duration := int(time.Since(startTime).Seconds())
-		client.FinishExecution(executionID, finalStatus, float64(time.Now().Unix()), duration, returnCode, "",
-			map[string]any{"tofu_action": action, "stack": stackName})
+		result := map[string]any{"tofu_action": action, "stack": stackName}
+		if policyRes != nil {
+			result["policy"] = policyRes
+		}
+		client.FinishExecution(executionID, finalStatus, float64(time.Now().Unix()), duration, returnCode, "", result)
 	}()
+
 
 	client.Heartbeat(executionID)
 
@@ -353,6 +360,54 @@ func executeTofuRun(executionID string, execData map[string]any, projectID strin
 		}
 		env = append(env, k+"="+fmt.Sprint(v))
 	}
+
+	// ---- Policy-as-code pre-flight gate -----------------------------------
+	if policyCfg != nil && (strings.EqualFold(action, "apply") || strings.EqualFold(action, "destroy")) {
+		sendLog("[policy] gate enabled — running a speculative plan before " + strings.ToLower(action) + "...\n")
+		planFile := ".opensible-policy.tfplan"
+		pargs := []string{"plan", "-input=false", "-no-color", "-out=" + planFile}
+		if strings.EqualFold(action, "destroy") {
+			pargs = append(pargs, "-destroy")
+		}
+		pctx, pcancel := context.WithTimeout(context.Background(), 20*time.Minute)
+		pcmd := exec.CommandContext(pctx, "tofu", pargs...)
+		pcmd.Dir = stackDir
+		pcmd.Env = env
+		pout, perr := pcmd.CombinedOutput()
+		pcancel()
+		if perr != nil {
+			sendLog(string(pout))
+			sendLog("[policy] ERROR: speculative plan failed — cannot evaluate policy, aborting.\n")
+			rc := 1
+			returnCode = &rc
+			_ = os.Remove(filepath.Join(stackDir, planFile))
+			return
+		}
+		raw, serr := showPlanJSON(stackDir, planFile, env)
+		_ = os.Remove(filepath.Join(stackDir, planFile))
+		if serr != nil {
+			sendLog("[policy] ERROR: `tofu show -json` failed: " + serr.Error() + " — aborting.\n")
+			rc := 1
+			returnCode = &rc
+			return
+		}
+		res, eerr := evaluatePolicy(raw, policyCfg)
+		if eerr != nil {
+			sendLog("[policy] ERROR: could not parse plan JSON: " + eerr.Error() + " — aborting.\n")
+			rc := 1
+			returnCode = &rc
+			return
+		}
+		policyRes = res
+		sendLog(formatPolicyReport(res))
+		if res.Denies > 0 && policyCfg.Mode == "enforce" {
+			finalStatus = "FAILED"
+			rc := 3
+			returnCode = &rc
+			return
+		}
+	}
+
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -476,9 +531,28 @@ loop:
 			sendLog("\n[drift] DRIFT DETECTED — the live infrastructure differs from the recorded state (see plan above).\n")
 		}
 	}
+
+	if policyCfg != nil && strings.EqualFold(action, "plan") && finalStatus == "SUCCESS" && !killed {
+		if raw, serr := showPlanJSON(stackDir, "tfplan", env); serr == nil {
+			if res, eerr := evaluatePolicy(raw, policyCfg); eerr == nil {
+				policyRes = res
+				sendLog(formatPolicyReport(res))
+				if res.Denies > 0 && policyCfg.Mode == "enforce" {
+					finalStatus = "FAILED"
+					rc := 3
+					returnCode = &rc
+				}
+			} else {
+				sendLog("[policy] WARNING: could not parse plan JSON: " + eerr.Error() + "\n")
+			}
+		} else {
+			sendLog("[policy] WARNING: `tofu show -json tfplan` failed: " + serr.Error() + "\n")
+		}
+	}
 	if killed {
 		finalStatus = "CANCELED"
 	}
+
 
 	// Snapshot tfstate on success.
 	if finalStatus == "SUCCESS" && (action == "apply" || action == "destroy" || action == "refresh" || action == "plan") {
