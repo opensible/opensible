@@ -168,7 +168,7 @@ export const pages: Record<string, string> = {
   "summary.loadingRun": "실행 불러오는 중…",
   "summary.loadingLog": "로그 불러오는 중…",
   "summary.exit": "종료 코드",
-  "summary.vmInventory": "VM 인벤토리",
+  "summary.vmInventory": "리소스 인벤토리",
   "summary.vmCount": "{count}개 VM",
   "summary.vmCountOne": "{count}개 VM",
   "summary.loadingInventory": "인벤토리 불러오는 중…",
