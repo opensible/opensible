@@ -114,13 +114,32 @@ export function PlanDiff({
           <FileDiff className="h-4 w-4" />
           {isDrift ? "Drift diff" : s?.applied ? "Apply result" : "Plan diff"}
         </CardTitle>
-        {s?.noChanges && (
-          <Badge variant="success" className="text-[10px] gap-1">
-            <CheckCircle2 className="h-3 w-3" /> No changes
-          </Badge>
-        )}
+        <div className="flex items-center gap-2">
+          {parsed.driftDetected && (
+            <Badge variant="destructive" className="text-[10px] gap-1">
+              <RefreshCcwDot className="h-3 w-3" /> Drift detected
+            </Badge>
+          )}
+          {parsed.noDrift && (
+            <Badge variant="success" className="text-[10px] gap-1">
+              <CheckCircle2 className="h-3 w-3" /> No drift
+            </Badge>
+          )}
+          {s?.noChanges && (
+            <Badge variant="success" className="text-[10px] gap-1">
+              <CheckCircle2 className="h-3 w-3" /> No changes
+            </Badge>
+          )}
+        </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {isDrift && parsed.driftDetected && parsed.resources.length === 0 && (
+          <p className="text-xs text-[var(--color-muted-foreground)]">
+            The live infrastructure differs from the recorded state. No managed resource blocks were
+            reported — the difference is in the state/outputs shown below.
+          </p>
+        )}
+
         {s && !s.noChanges && (
           <div className="flex flex-wrap gap-2">
             <Stat value={s.add} label={s.applied ? "added" : "to add"} tone={TONE_CLASS.create!} />

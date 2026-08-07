@@ -45,6 +45,13 @@ const FLOWS: Record<string, Step[]> = {
     { id: "destroy", label: "Destroy" },
     { id: "done", label: "Done" },
   ],
+  drift: [
+    { id: "start", label: "Start" },
+    { id: "init", label: "Init" },
+    { id: "refresh", label: "Refresh state" },
+    { id: "drift", label: "Detect drift" },
+    { id: "done", label: "Done" },
+  ],
 };
 
 function detectStates(action: string, log: string, status?: string): Record<string, StepState> {
@@ -78,6 +85,10 @@ function detectStates(action: string, log: string, status?: string): Record<stri
   if ("plan" in states) {
     if (has(/Terraform will perform|OpenTofu will perform|Terraform used the selected providers|OpenTofu used the selected providers/i)) states.plan = "running";
     if (has(/Plan: \d+ to add|No changes\.|Saved the plan to/i)) states.plan = "success";
+  }
+  if ("drift" in states) {
+    if (has(/Detecting drift|tofu plan -refresh-only|OpenTofu will perform|Terraform will perform/i)) states.drift = "running";
+    if (has(/\[drift\]\s*(DRIFT DETECTED|no drift)|Objects have changed outside of (OpenTofu|Terraform)|No changes\./i)) states.drift = "success";
   }
   if ("apply" in states) {
     if (has(/: Creating\.\.\.|: Modifying\.\.\.|Still creating|Still modifying|Apply\.\.\./i)) states.apply = "running";

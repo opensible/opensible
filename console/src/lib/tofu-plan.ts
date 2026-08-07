@@ -35,6 +35,8 @@ export type ParsedPlan = {
   resources: PlanResource[];
   summary: PlanSummary | null;
   outputs: PlanAttrChange[];
+  driftDetected: boolean;
+  noDrift: boolean;
   /** Whether anything plan-like was found at all. */
   hasPlan: boolean;
 };
@@ -95,7 +97,9 @@ function cleanValue(v: string): string {
 }
 
 export function parseTofuPlan(log: string): ParsedPlan {
-  const empty: ParsedPlan = { resources: [], summary: null, outputs: [], hasPlan: false };
+  const empty: ParsedPlan = {
+    resources: [], summary: null, outputs: [], driftDetected: false, noDrift: false, hasPlan: false,
+  };
   if (!log) return empty;
 
   const lines = log.split("\n");
@@ -167,11 +171,19 @@ export function parseTofuPlan(log: string): ParsedPlan {
     summary = { add: 0, change: 0, destroy: 0, noChanges: true, applied: false };
   }
 
+  const driftDetected =
+    /\[drift\]\s*DRIFT DETECTED/i.test(log) ||
+    /Objects have changed outside of (OpenTofu|Terraform)/i.test(log) ||
+    resources.some((r) => r.action === "drift");
+  const noDrift = !driftDetected && /\[drift\]\s*no drift/i.test(log);
+
   return {
     resources,
     summary,
     outputs,
-    hasPlan: resources.length > 0 || summary !== null,
+    driftDetected,
+    noDrift,
+    hasPlan: resources.length > 0 || summary !== null || outputs.length > 0 || driftDetected || noDrift,
   };
 }
 
