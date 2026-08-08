@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
-import { ChevronRight, FilePlus2, FileMinus2, FileDiff, RefreshCcwDot, Eye, CheckCircle2 } from "lucide-react";
+import { ChevronRight, FilePlus2, FileMinus2, FileDiff, RefreshCcwDot, Eye, CheckCircle2, ShieldCheck, ShieldAlert, ShieldX } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { parseTofuPlan, ACTION_META, type PlanChangeAction, type PlanResource } from "@/lib/tofu-plan";
+import { parseTofuPlan, ACTION_META, type PlanChangeAction, type PlanResource, type PolicyReport } from "@/lib/tofu-plan";
 import { cn } from "@/lib/utils";
 
 const TONE_CLASS: Record<string, string> = {
@@ -84,6 +84,71 @@ function Stat({ value, label, tone }: { value: number; label: string; tone: stri
   );
 }
 
+function PolicySection({ policy }: { policy: PolicyReport }) {
+  const Icon = policy.blocked ? ShieldX : policy.violations.length ? ShieldAlert : ShieldCheck;
+  const tone = policy.blocked
+    ? TONE_CLASS.destroy
+    : policy.violations.length
+      ? TONE_CLASS.update
+      : TONE_CLASS.create;
+  return (
+    <div className="rounded-md border border-[var(--color-border)]">
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-[var(--color-border)]">
+        <Icon className={cn("h-4 w-4", tone)} />
+        <span className="text-xs font-medium">Policy-as-code gate</span>
+        <Badge variant="default" className="text-[10px]">mode: {policy.mode}</Badge>
+        {policy.blocked ? (
+          <Badge variant="destructive" className="text-[10px]">Run blocked</Badge>
+        ) : policy.violations.length ? (
+          <Badge variant="warning" className="text-[10px]">Violations reported</Badge>
+        ) : (
+          <Badge variant="success" className="text-[10px]">Passed</Badge>
+        )}
+        <span className="ml-auto text-[11px] text-[var(--color-muted-foreground)] tabular-nums">
+          {policy.denies} deny · {policy.warns} warn
+        </span>
+      </div>
+
+      {policy.blocked && policy.blockedBy.length > 0 && (
+        <div className="px-3 py-2 text-[11px] border-b border-[var(--color-border)]">
+          <span className="text-[var(--color-muted-foreground)]">Blocked by: </span>
+          <span className={cn("font-mono", TONE_CLASS.destroy)}>{policy.blockedBy.join(", ")}</span>
+        </div>
+      )}
+
+      {policy.violations.length > 0 ? (
+        <div className="divide-y divide-[var(--color-border)]">
+          {policy.violations.map((v, i) => (
+            <div key={`${v.rule}-${i}`} className="flex flex-wrap items-start gap-2 px-3 py-2">
+              <span
+                className={cn(
+                  "text-[10px] font-semibold uppercase tracking-wide rounded px-1.5 py-0.5 shrink-0",
+                  v.level === "warn" ? TONE_CLASS.update : TONE_CLASS.destroy
+                )}
+              >
+                {v.level}
+              </span>
+              <span className="font-mono text-[11px] shrink-0">{v.rule}</span>
+              {v.address && (
+                <span className="font-mono text-[11px] text-[var(--color-muted-foreground)] truncate">
+                  {v.address}
+                </span>
+              )}
+              <span className="text-[11px] basis-full sm:basis-auto sm:flex-1 text-[var(--color-muted-foreground)]">
+                {v.message}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="px-3 py-2 text-[11px] text-[var(--color-muted-foreground)]">
+          No policy violations found.
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function PlanDiff({
   log,
   action,
@@ -133,6 +198,8 @@ export function PlanDiff({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {parsed.policy && <PolicySection policy={parsed.policy} />}
+
         {isDrift && parsed.driftDetected && parsed.resources.length === 0 && (
           <p className="text-xs text-[var(--color-muted-foreground)]">
             The live infrastructure differs from the recorded state. No managed resource blocks were
