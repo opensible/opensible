@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
@@ -25,14 +26,31 @@ type policyRule struct {
 	Ports       []int    `json:"ports"`
 	Limit       int      `json:"limit"`
 }
+type customRule struct {
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Description   string   `json:"description"`
+	Enabled       bool     `json:"enabled"`
+	Severity      string   `json:"severity"`    // info | warn | deny
+	Enforcement   string   `json:"enforcement"` // inherit | block | report
+	ResourceTypes []string `json:"resource_types"`
+	Addresses     []string `json:"addresses"`
+	Actions       []string `json:"actions"`
+	Attribute     string   `json:"attribute"`
+	Operator      string   `json:"operator"`
+	Value         string   `json:"value"`
+	Message       string   `json:"message"`
+}
 
 type policyConfig struct {
-	Mode  string                `json:"mode"` // warn | enforce
-	Rules map[string]policyRule `json:"rules"`
+	Mode        string                `json:"mode"` // warn | enforce
+	Rules       map[string]policyRule `json:"rules"`
+	CustomRules []customRule          `json:"custom_rules"`
 }
 
 type Violation struct {
 	Rule     string `json:"rule"`
+	Name     string `json:"name,omitempty"`
 	Severity string `json:"severity"`
 	Blocking bool   `json:"blocking"`
 	Address  string `json:"address,omitempty"`
@@ -45,11 +63,13 @@ type PolicyResult struct {
 	Mode    string `json:"mode"`
 	Denies  int    `json:"denies"`
 	Warns   int    `json:"warns"`
+	Infos   int    `json:"infos"`
 	// Blocked is true when at least one violation is blocking.
 	Blocked    bool        `json:"blocked"`
 	BlockedBy  []string    `json:"blocked_by,omitempty"`
 	Violations []Violation `json:"violations"`
 }
+
 
 func parsePolicyConfig(raw any) *policyConfig {
 	if raw == nil {
@@ -66,12 +86,14 @@ func parsePolicyConfig(raw any) *policyConfig {
 	if cfg.Mode != "enforce" {
 		cfg.Mode = "warn"
 	}
-	if len(cfg.Rules) == 0 {
-		return nil
-	}
 	// Nothing enabled → treat as absent so we skip the whole gate.
 	for _, r := range cfg.Rules {
 		if r.Enabled {
+			return &cfg
+		}
+	}
+	for _, c := range cfg.CustomRules {
+		if c.Enabled {
 			return &cfg
 		}
 	}
@@ -131,6 +153,7 @@ func enforcementOf(r policyRule) string {
 	}
 }
 
+
 func ruleBlocks(r policyRule, mode string) bool {
 	switch enforcementOf(r) {
 	case "block":
@@ -141,6 +164,259 @@ func ruleBlocks(r policyRule, mode string) bool {
 		return sevOf(r) == "deny" && mode == "enforce"
 	}
 }
+
+
+func customSevOf(c customRule) string {
+	switch strings.ToLower(strings.TrimSpace(c.Severity)) {
+	case "deny":
+		return "deny"
+	case "info":
+		return "info"
+	default:
+		return "warn"
+	}
+}
+
+func customRuleBlocks(c customRule, mode string) bool {
+	switch strings.ToLower(strings.TrimSpace(c.Enforcement)) {
+	case "block":
+		return true
+	case "report":
+		return false
+	default:
+		return customSevOf(c) == "deny" && mode == "enforce"
+	}
+}
+
+// anyRegexMatch reports whether s matches any of the patterns. An empty
+// pattern list means "no constraint" and matches everything.
+func anyRegexMatch(patterns []string, s string) bool {
+	if len(patterns) == 0 {
+		return true
+	}
+	for _, p := range patterns {
+		re, err := regexp.Compile(p)
+		if err != nil {
+			continue
+		}
+		if re.MatchString(s) {
+			return true
+		}
+	}
+	return false
+}
+
+func lookupAttribute(root any, path string) []any {
+	if strings.TrimSpace(path) == "" {
+		if root == nil {
+			return nil
+		}
+		return []any{root}
+	}
+	current := []any{root}
+	for _, seg := range strings.Split(path, ".") {
+		seg = strings.TrimSpace(seg)
+		if seg == "" {
+			continue
+		}
+		var next []any
+		for _, node := range current {
+			switch t := node.(type) {
+			case map[string]any:
+				if seg == "*" {
+					for _, v := range t {
+						next = append(next, v)
+					}
+				} else if v, ok := t[seg]; ok {
+					next = append(next, v)
+				}
+			case []any:
+				if seg == "*" {
+					next = append(next, t...)
+				} else if idx, ok := asInt(seg); ok && idx >= 0 && idx < len(t) {
+					next = append(next, t[idx])
+				} else {
+					// Allow "ingress.cidr_blocks" against a list of objects.
+					for _, e := range t {
+						if m, ok := e.(map[string]any); ok {
+							if v, ok := m[seg]; ok {
+								next = append(next, v)
+							}
+						}
+					}
+				}
+			}
+		}
+		if len(next) == 0 {
+			return nil
+		}
+		current = next
+	}
+	return current
+}
+
+func flattenValues(vals []any) []any {
+	var out []any
+	for _, v := range vals {
+		if list, ok := v.([]any); ok {
+			out = append(out, flattenValues(list)...)
+			continue
+		}
+		out = append(out, v)
+	}
+	return out
+}
+
+func valueToString(v any) string {
+	switch t := v.(type) {
+	case nil:
+		return ""
+	case string:
+		return t
+	case float64:
+		if t == float64(int64(t)) {
+			return fmt.Sprintf("%d", int64(t))
+		}
+		return fmt.Sprintf("%v", t)
+	case bool:
+		return fmt.Sprintf("%t", t)
+	case map[string]any, []any:
+		if b, err := json.Marshal(t); err == nil {
+			return string(b)
+		}
+	}
+	return fmt.Sprint(v)
+}
+
+func asFloat(v any) (float64, bool) {
+	switch t := v.(type) {
+	case float64:
+		return t, true
+	case int:
+		return float64(t), true
+	case bool:
+		if t {
+			return 1, true
+		}
+		return 0, true
+	case string:
+		var f float64
+		if _, err := fmt.Sscanf(strings.TrimSpace(t), "%g", &f); err == nil {
+			return f, true
+		}
+	}
+	return 0, false
+}
+
+
+func evalCustomRule(c customRule, rc planResourceChange) []string {
+	if !anyRegexMatch(c.ResourceTypes, rc.Type) {
+		return nil
+	}
+	if !anyRegexMatch(c.Addresses, rc.Address) {
+		return nil
+	}
+	actions := c.Actions
+	if len(actions) == 0 {
+		actions = []string{"create", "update"}
+	}
+	matchedAction := false
+	for _, a := range actions {
+		if hasAction(rc.Change.Actions, strings.ToLower(strings.TrimSpace(a))) {
+			matchedAction = true
+			break
+		}
+	}
+	if !matchedAction {
+		return nil
+	}
+
+	op := strings.ToLower(strings.TrimSpace(c.Operator))
+	if op == "" {
+		op = "matches"
+	}
+	found := flattenValues(lookupAttribute(map[string]any(rc.Change.After), c.Attribute))
+
+	msg := c.Message
+	fallback := func(detail string) string {
+		if msg != "" {
+			return msg
+		}
+		return detail
+	}
+	attrLabel := c.Attribute
+	if attrLabel == "" {
+		attrLabel = "resource"
+	}
+
+	switch op {
+	case "exists":
+		if len(found) == 0 {
+			return []string{fallback(fmt.Sprintf("attribute %q is required but not set", attrLabel))}
+		}
+		return nil
+	case "not_exists":
+		if len(found) > 0 {
+			return []string{fallback(fmt.Sprintf("attribute %q must not be set", attrLabel))}
+		}
+		return nil
+	}
+
+	if len(found) == 0 {
+		// Nothing to compare — "not_matches"/"not_equals" are satisfied by absence.
+		return nil
+	}
+
+	var re *regexp.Regexp
+	if op == "matches" || op == "not_matches" {
+		compiled, err := regexp.Compile(c.Value)
+		if err != nil {
+			return []string{fmt.Sprintf("rule has an invalid regex (%s): %v", c.Value, err)}
+		}
+		re = compiled
+	}
+
+	var hits []string
+	for _, v := range found {
+		s := valueToString(v)
+		switch op {
+		case "matches":
+			if re.MatchString(s) {
+				hits = append(hits, fallback(fmt.Sprintf("%s = %q matches /%s/", attrLabel, s, c.Value)))
+			}
+		case "not_matches":
+			if !re.MatchString(s) {
+				hits = append(hits, fallback(fmt.Sprintf("%s = %q does not match /%s/", attrLabel, s, c.Value)))
+			}
+		case "equals":
+			if s == c.Value {
+				hits = append(hits, fallback(fmt.Sprintf("%s equals %q", attrLabel, c.Value)))
+			}
+		case "not_equals":
+			if s != c.Value {
+				hits = append(hits, fallback(fmt.Sprintf("%s = %q, expected %q", attrLabel, s, c.Value)))
+			}
+		case "gt", "lt":
+			want, ok1 := asFloat(c.Value)
+			got, ok2 := asFloat(v)
+			if !ok1 || !ok2 {
+				continue
+			}
+			if (op == "gt" && got > want) || (op == "lt" && got < want) {
+				sym := ">"
+				if op == "lt" {
+					sym = "<"
+				}
+				hits = append(hits, fallback(fmt.Sprintf("%s = %s is %s %s", attrLabel, s, sym, c.Value)))
+			}
+		}
+		if len(hits) > 0 {
+			break // one violation per resource is enough
+		}
+	}
+	return hits
+}
+
 
 // evaluatePolicy applies the enabled rules to the plan JSON.
 func evaluatePolicy(raw []byte, cfg *policyConfig) (*PolicyResult, error) {
@@ -244,11 +520,36 @@ func evaluatePolicy(raw []byte, cfg *policyConfig) (*PolicyResult, error) {
 			fmt.Sprintf("plan creates %d resources, above the limit of %d", created, r.Limit))
 	}
 
+	// --- custom (user-defined) rules ----------------------------------------
+	for _, c := range cfg.CustomRules {
+		if !c.Enabled {
+			continue
+		}
+		ruleKey := "custom:" + c.ID
+		sev := customSevOf(c)
+		blocks := customRuleBlocks(c, cfg.Mode)
+		name := c.Name
+		if name == "" {
+			name = c.ID
+		}
+		for _, rc := range plan.ResourceChanges {
+			for _, msg := range evalCustomRule(c, rc) {
+				res.Violations = append(res.Violations, Violation{
+					Rule: ruleKey, Name: name, Severity: sev, Blocking: blocks,
+					Address: rc.Address, Type: rc.Type, Message: msg,
+				})
+			}
+		}
+	}
+
 	seenBlocked := map[string]bool{}
 	for _, v := range res.Violations {
-		if v.Severity == "deny" {
+		switch v.Severity {
+		case "deny":
 			res.Denies++
-		} else {
+		case "info":
+			res.Infos++
+		default:
 			res.Warns++
 		}
 		if v.Blocking && !seenBlocked[v.Rule] {
@@ -256,6 +557,7 @@ func evaluatePolicy(raw []byte, cfg *policyConfig) (*PolicyResult, error) {
 			res.BlockedBy = append(res.BlockedBy, v.Rule)
 		}
 	}
+
 	sort.Strings(res.BlockedBy)
 	res.Blocked = len(res.BlockedBy) > 0
 	switch {
@@ -267,6 +569,8 @@ func evaluatePolicy(raw []byte, cfg *policyConfig) (*PolicyResult, error) {
 	return res, nil
 }
 
+// resourceTags normalises the many tag shapes providers use. Returns nil when
+// the resource has no recognisable tag attribute.
 func resourceTags(after map[string]any) map[string]string {
 	if after == nil {
 		return nil
@@ -398,7 +702,8 @@ func asInt(v any) (int, bool) {
 	return 0, false
 }
 
-
+// ruleCoversPort reports whether a rule's port range includes p. A rule with no
+// recognisable port info is treated as "all ports" (i.e. it covers p).
 func ruleCoversPort(rule map[string]any, p int) bool {
 	if proto, ok := rule["protocol"].(string); ok {
 		lp := strings.ToLower(strings.TrimSpace(proto))
@@ -431,6 +736,7 @@ func ruleCoversPort(rule map[string]any, p int) bool {
 			}
 		}
 	}
+	// from_port / to_port pairs (AWS style).
 	from, ok1 := asInt(rule["from_port"])
 	to, ok2 := asInt(rule["to_port"])
 	if ok1 && ok2 {
@@ -439,6 +745,7 @@ func ruleCoversPort(rule map[string]any, p int) bool {
 		}
 		return p >= from && p <= to
 	}
+	// No port information at all → assume the rule is wide open.
 	_, hasAnyPortKey := rule["from_port"]
 	return !hasAnyPortKey
 }
@@ -450,15 +757,18 @@ func ruleCoversPort(rule map[string]any, p int) bool {
 func formatPolicyReport(res *PolicyResult) string {
 	var b strings.Builder
 	b.WriteString("\n[policy] ── Policy-as-code gate ──────────────────────────────\n")
-	b.WriteString(fmt.Sprintf("[policy] mode=%s  deny=%d  warn=%d\n", res.Mode, res.Denies, res.Warns))
+	b.WriteString(fmt.Sprintf("[policy] mode=%s  deny=%d  warn=%d  info=%d\n", res.Mode, res.Denies, res.Warns, res.Infos))
 	if len(res.Violations) == 0 {
 		b.WriteString("[policy] PASS — no violations found.\n\n")
 		return b.String()
 	}
 	for _, v := range res.Violations {
 		label := "WARN"
-		if v.Severity == "deny" {
+		switch v.Severity {
+		case "deny":
 			label = "DENY"
+		case "info":
+			label = "INFO"
 		}
 		if v.Blocking {
 			label = "BLOCK"
@@ -467,7 +777,11 @@ func formatPolicyReport(res *PolicyResult) string {
 		if addr == "" {
 			addr = "(plan)"
 		}
-		b.WriteString(fmt.Sprintf("[policy] %s  %-22s %s — %s\n", label, v.Rule, addr, v.Message))
+		ruleLabel := v.Rule
+		if v.Name != "" {
+			ruleLabel = v.Name
+		}
+		b.WriteString(fmt.Sprintf("[policy] %s  %-22s %s — %s\n", label, ruleLabel, addr, v.Message))
 	}
 	switch {
 	case res.Blocked:
