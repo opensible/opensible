@@ -1,0 +1,40 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+*.iml
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+ssh-keys/
+**/worker.token
+**/.encryption_key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.coverage
+htmlcov/
+.mypy_cache/
+
+# Go
+worker/bin/
+*.test
+
+# Node / Bun
+console/node_modules/
+console/dist/
+console/.tanstack/
+
+# Runtime data
+data/
+*.log
