@@ -11,14 +11,19 @@ import (
 	"time"
 )
 
+// ---------------------------------------------------------------------------
+// Config (mirrors backend _default_policy)
+// ---------------------------------------------------------------------------
+
 type policyRule struct {
-	Enabled    bool     `json:"enabled"`
-	Severity   string   `json:"severity"`
-	MaxDestroy int      `json:"max_destroy"`
-	Types      []string `json:"types"`
-	Keys       []string `json:"keys"`
-	Ports      []int    `json:"ports"`
-	Limit      int      `json:"limit"`
+	Enabled  bool   `json:"enabled"`
+	Severity string `json:"severity"`
+	Enforcement string   `json:"enforcement"`
+	MaxDestroy  int      `json:"max_destroy"`
+	Types       []string `json:"types"`
+	Keys        []string `json:"keys"`
+	Ports       []int    `json:"ports"`
+	Limit       int      `json:"limit"`
 }
 
 type policyConfig struct {
@@ -29,16 +34,20 @@ type policyConfig struct {
 type Violation struct {
 	Rule     string `json:"rule"`
 	Severity string `json:"severity"`
+	Blocking bool   `json:"blocking"`
 	Address  string `json:"address,omitempty"`
 	Type     string `json:"type,omitempty"`
 	Message  string `json:"message"`
 }
 
 type PolicyResult struct {
-	Verdict    string      `json:"verdict"` // pass | warn | fail
-	Mode       string      `json:"mode"`
-	Denies     int         `json:"denies"`
-	Warns      int         `json:"warns"`
+	Verdict string `json:"verdict"` // pass | warn | fail
+	Mode    string `json:"mode"`
+	Denies  int    `json:"denies"`
+	Warns   int    `json:"warns"`
+	// Blocked is true when at least one violation is blocking.
+	Blocked    bool        `json:"blocked"`
+	BlockedBy  []string    `json:"blocked_by,omitempty"`
 	Violations []Violation `json:"violations"`
 }
 
@@ -60,6 +69,7 @@ func parsePolicyConfig(raw any) *policyConfig {
 	if len(cfg.Rules) == 0 {
 		return nil
 	}
+	// Nothing enabled → treat as absent so we skip the whole gate.
 	for _, r := range cfg.Rules {
 		if r.Enabled {
 			return &cfg
@@ -83,6 +93,7 @@ type planJSON struct {
 	ResourceChanges []planResourceChange `json:"resource_changes"`
 }
 
+// showPlanJSON runs `tofu show -json <planFile>` in stackDir.
 func showPlanJSON(stackDir, planFile string, env []string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
@@ -108,6 +119,29 @@ func sevOf(r policyRule) string {
 	return "warn"
 }
 
+// enforcementOf normalises the per-rule enforcement override.
+func enforcementOf(r policyRule) string {
+	switch strings.ToLower(strings.TrimSpace(r.Enforcement)) {
+	case "block":
+		return "block"
+	case "report":
+		return "report"
+	default:
+		return "inherit"
+	}
+}
+
+func ruleBlocks(r policyRule, mode string) bool {
+	switch enforcementOf(r) {
+	case "block":
+		return true
+	case "report":
+		return false
+	default:
+		return sevOf(r) == "deny" && mode == "enforce"
+	}
+}
+
 // evaluatePolicy applies the enabled rules to the plan JSON.
 func evaluatePolicy(raw []byte, cfg *policyConfig) (*PolicyResult, error) {
 	var plan planJSON
@@ -116,9 +150,13 @@ func evaluatePolicy(raw []byte, cfg *policyConfig) (*PolicyResult, error) {
 	}
 
 	res := &PolicyResult{Verdict: "pass", Mode: cfg.Mode, Violations: []Violation{}}
+	blocking := map[string]bool{}
+	for id, r := range cfg.Rules {
+		blocking[id] = r.Enabled && ruleBlocks(r, cfg.Mode)
+	}
 	add := func(rule, sev, addr, rtype, msg string) {
 		res.Violations = append(res.Violations, Violation{
-			Rule: rule, Severity: sev, Address: addr, Type: rtype, Message: msg,
+			Rule: rule, Severity: sev, Blocking: blocking[rule], Address: addr, Type: rtype, Message: msg,
 		})
 	}
 
@@ -206,15 +244,22 @@ func evaluatePolicy(raw []byte, cfg *policyConfig) (*PolicyResult, error) {
 			fmt.Sprintf("plan creates %d resources, above the limit of %d", created, r.Limit))
 	}
 
+	seenBlocked := map[string]bool{}
 	for _, v := range res.Violations {
 		if v.Severity == "deny" {
 			res.Denies++
 		} else {
 			res.Warns++
 		}
+		if v.Blocking && !seenBlocked[v.Rule] {
+			seenBlocked[v.Rule] = true
+			res.BlockedBy = append(res.BlockedBy, v.Rule)
+		}
 	}
+	sort.Strings(res.BlockedBy)
+	res.Blocked = len(res.BlockedBy) > 0
 	switch {
-	case res.Denies > 0:
+	case res.Blocked || res.Denies > 0:
 		res.Verdict = "fail"
 	case res.Warns > 0:
 		res.Verdict = "warn"
@@ -257,6 +302,8 @@ func resourceTags(after map[string]any) map[string]string {
 
 var openCIDRs = map[string]bool{"0.0.0.0/0": true, "::/0": true, "0.0.0.0/0,::/0": true}
 
+// publicIngressHits scans a resource's planned attributes for firewall/security
+// group ingress rules that expose one of `ports` to the open internet.
 func publicIngressHits(after map[string]any, ports []int) []string {
 	if after == nil {
 		return nil
@@ -351,6 +398,7 @@ func asInt(v any) (int, bool) {
 	return 0, false
 }
 
+
 func ruleCoversPort(rule map[string]any, p int) bool {
 	if proto, ok := rule["protocol"].(string); ok {
 		lp := strings.ToLower(strings.TrimSpace(proto))
@@ -391,7 +439,6 @@ func ruleCoversPort(rule map[string]any, p int) bool {
 		}
 		return p >= from && p <= to
 	}
-
 	_, hasAnyPortKey := rule["from_port"]
 	return !hasAnyPortKey
 }
@@ -413,6 +460,9 @@ func formatPolicyReport(res *PolicyResult) string {
 		if v.Severity == "deny" {
 			label = "DENY"
 		}
+		if v.Blocking {
+			label = "BLOCK"
+		}
 		addr := v.Address
 		if addr == "" {
 			addr = "(plan)"
@@ -420,10 +470,10 @@ func formatPolicyReport(res *PolicyResult) string {
 		b.WriteString(fmt.Sprintf("[policy] %s  %-22s %s — %s\n", label, v.Rule, addr, v.Message))
 	}
 	switch {
-	case res.Denies > 0 && res.Mode == "enforce":
-		b.WriteString("[policy] FAILED — the run is blocked because the gate is in enforce mode.\n\n")
+	case res.Blocked:
+		b.WriteString("[policy] FAILED — run blocked by rule(s): " + strings.Join(res.BlockedBy, ", ") + "\n\n")
 	case res.Denies > 0:
-		b.WriteString("[policy] Violations found, but the gate is in warn mode — continuing.\n\n")
+		b.WriteString("[policy] Violations found, but no rule is set to block this run — continuing.\n\n")
 	default:
 		b.WriteString("[policy] Warnings only — continuing.\n\n")
 	}
