@@ -16,8 +16,8 @@ import (
 // ---------------------------------------------------------------------------
 
 type policyRule struct {
-	Enabled  bool   `json:"enabled"`
-	Severity string `json:"severity"`
+	Enabled     bool     `json:"enabled"`
+	Severity    string   `json:"severity"`
 	Enforcement string   `json:"enforcement"`
 	MaxDestroy  int      `json:"max_destroy"`
 	Types       []string `json:"types"`
@@ -27,8 +27,9 @@ type policyRule struct {
 }
 
 type policyConfig struct {
-	Mode  string                `json:"mode"` // warn | enforce
-	Rules map[string]policyRule `json:"rules"`
+	Mode        string                `json:"mode"` // warn | enforce
+	Rules       map[string]policyRule `json:"rules"`
+	CustomRules []customRule          `json:"custom_rules"`
 }
 
 type Violation struct {
@@ -49,6 +50,7 @@ type PolicyResult struct {
 	Blocked    bool        `json:"blocked"`
 	BlockedBy  []string    `json:"blocked_by,omitempty"`
 	Violations []Violation `json:"violations"`
+	Errors     []string    `json:"errors,omitempty"`
 }
 
 func parsePolicyConfig(raw any) *policyConfig {
@@ -66,12 +68,17 @@ func parsePolicyConfig(raw any) *policyConfig {
 	if cfg.Mode != "enforce" {
 		cfg.Mode = "warn"
 	}
-	if len(cfg.Rules) == 0 {
+	if len(cfg.Rules) == 0 && len(cfg.CustomRules) == 0 {
 		return nil
 	}
 	// Nothing enabled → treat as absent so we skip the whole gate.
 	for _, r := range cfg.Rules {
 		if r.Enabled {
+			return &cfg
+		}
+	}
+	for _, c := range cfg.CustomRules {
+		if c.Enabled {
 			return &cfg
 		}
 	}
@@ -90,7 +97,13 @@ type planResourceChange struct {
 }
 
 type planJSON struct {
-	ResourceChanges []planResourceChange `json:"resource_changes"`
+	ResourceChanges []planResourceChange        `json:"resource_changes"`
+	OutputChanges   map[string]planOutputChange `json:"output_changes"`
+}
+
+type planOutputChange struct {
+	Actions []string `json:"actions"`
+	After   any      `json:"after"`
 }
 
 // showPlanJSON runs `tofu show -json <planFile>` in stackDir.
@@ -142,8 +155,9 @@ func ruleBlocks(r policyRule, mode string) bool {
 	}
 }
 
-// evaluatePolicy applies the enabled rules to the plan JSON.
-func evaluatePolicy(raw []byte, cfg *policyConfig) (*PolicyResult, error) {
+// evaluatePolicy applies the enabled rules to the plan JSON. stackDir is used
+// only for custom rules targeting the rendered terraform.tfvars file.
+func evaluatePolicy(raw []byte, cfg *policyConfig, stackDir string) (*PolicyResult, error) {
 	var plan planJSON
 	if err := json.Unmarshal(raw, &plan); err != nil {
 		return nil, err
@@ -244,9 +258,12 @@ func evaluatePolicy(raw []byte, cfg *policyConfig) (*PolicyResult, error) {
 			fmt.Sprintf("plan creates %d resources, above the limit of %d", created, r.Limit))
 	}
 
+	// --- custom rules -------------------------------------------------------
+	evaluateCustomRules(res, &plan, cfg, stackDir)
+
 	seenBlocked := map[string]bool{}
 	for _, v := range res.Violations {
-		if v.Severity == "deny" {
+		if v.Severity == "deny" || v.Severity == "error" {
 			res.Denies++
 		} else {
 			res.Warns++
@@ -398,7 +415,6 @@ func asInt(v any) (int, bool) {
 	return 0, false
 }
 
-
 func ruleCoversPort(rule map[string]any, p int) bool {
 	if proto, ok := rule["protocol"].(string); ok {
 		lp := strings.ToLower(strings.TrimSpace(proto))
@@ -457,8 +473,11 @@ func formatPolicyReport(res *PolicyResult) string {
 	}
 	for _, v := range res.Violations {
 		label := "WARN"
-		if v.Severity == "deny" {
+		switch v.Severity {
+		case "deny", "error":
 			label = "DENY"
+		case "info":
+			label = "INFO"
 		}
 		if v.Blocking {
 			label = "BLOCK"

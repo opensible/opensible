@@ -4,8 +4,9 @@ Policy-as-code gate for Cloud Provisioning stacks (opt-in per stack).
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from flask import jsonify, request
 
@@ -20,6 +21,33 @@ POLICY_RULE_TYPES = {
 SEVERITIES = ("warn", "deny")
 ENFORCEMENTS = ("inherit", "block", "report")
 
+# Custom (user-defined) rules: richer severities and a YAML/JSON check DSL.
+#   "info"           -> report only, never blocks
+#   "warning"        -> blocks only when the gate runs in enforce mode
+#   "error"          -> deny-severity: blocks in enforce mode, or always with
+#                       enforcement "block"
+CUSTOM_SEVERITIES = ("info", "warning", "error")
+CUSTOM_ENFORCEMENTS = ("inherit", "block", "report")
+CUSTOM_TARGETS = ("resource", "output", "config")
+CUSTOM_OPERATORS = frozenset(
+    {
+        "exists",
+        "not_exists",
+        "equals",
+        "not_equals",
+        "contains",
+        "not_contains",
+        "matches",
+        "not_matches",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+    }
+)
+MAX_CUSTOM_RULES = 50
+_CUSTOM_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")
+
 
 def default_policy() -> Dict[str, Any]:
     """Conservative starting point: everything off except the two cheap,
@@ -33,6 +61,7 @@ def default_policy() -> Dict[str, Any]:
             "deny_public_ingress": {"enabled": True, "severity": "deny", "enforcement": "inherit", "ports": [22, 3389]},
             "max_created": {"enabled": False, "severity": "warn", "enforcement": "inherit", "limit": 50},
         },
+        "custom_rules": [],
     }
 
 
@@ -50,7 +79,89 @@ def policy_config_from_meta(meta: Dict[str, Any]) -> Dict[str, Any]:
         for rid, rule in (stored.get("rules") or {}).items():
             if rid in cfg["rules"] and isinstance(rule, dict):
                 cfg["rules"][rid].update({k: v for k, v in rule.items() if k != "id"})
+        if isinstance(stored.get("custom_rules"), list):
+            cfg["custom_rules"] = sanitize_custom_rules(stored["custom_rules"])
     return cfg
+
+
+def _clean_str(value: Any, max_len: int = 500) -> str:
+    if not isinstance(value, str):
+        return ""
+    return value.strip()[:max_len]
+
+
+def sanitize_custom_rules(rules: Any) -> List[Dict[str, Any]]:
+    """Whitelist the custom-rule schema. Structure is validated here; regex
+    patterns and path resolution are validated by the worker (RE2), whose
+    findings surface in the policy result's `errors` field."""
+    if not isinstance(rules, list):
+        return []
+    out: List[Dict[str, Any]] = []
+    seen_ids: set = set()
+    for rule in rules[:MAX_CUSTOM_RULES]:
+        if not isinstance(rule, dict):
+            continue
+        rid = _clean_str(rule.get("id"), 64)
+        if not _CUSTOM_ID_RE.match(rid) or rid in seen_ids:
+            continue
+        seen_ids.add(rid)
+
+        severity = _clean_str(rule.get("severity"), 32).lower()
+        if severity not in CUSTOM_SEVERITIES:
+            severity = "warning"
+        enforcement = _clean_str(rule.get("enforcement"), 32).lower()
+        if enforcement not in CUSTOM_ENFORCEMENTS:
+            enforcement = "inherit"
+        if severity == "info":
+            enforcement = "report"  # info-severity rules can never block
+        target = _clean_str(rule.get("target"), 32).lower()
+        if target not in CUSTOM_TARGETS:
+            target = "resource"
+
+        match: Dict[str, Any] = {"types": [], "addresses": [], "actions": []}
+        if isinstance(rule.get("match"), dict):
+            incoming_match = rule["match"]
+            for key in ("types", "addresses"):
+                items = incoming_match.get(key)
+                if isinstance(items, list):
+                    match[key] = [
+                        _clean_str(x, 200) for x in items if isinstance(x, str) and x.strip()
+                    ][:100]
+            actions = incoming_match.get("actions")
+            if isinstance(actions, list):
+                match["actions"] = [
+                    _clean_str(x, 50).lower() for x in actions if isinstance(x, str) and x.strip()
+                ][:50]
+
+        checks: List[Dict[str, Any]] = []
+        incoming_checks = rule.get("checks")
+        if isinstance(incoming_checks, list):
+            for c in incoming_checks[:100]:
+                if not isinstance(c, dict):
+                    continue
+                op = _clean_str(c.get("operator"), 32).lower()
+                if op not in CUSTOM_OPERATORS:
+                    continue
+                checks.append({"path": _clean_str(c.get("path"), 300), "operator": op, "value": c.get("value")})
+        if not checks:
+            continue
+
+        out.append(
+            {
+                "id": rid,
+                "name": _clean_str(rule.get("name"), 200),
+                "description": _clean_str(rule.get("description"), 500),
+                "category": _clean_str(rule.get("category"), 100),
+                "enabled": bool(rule.get("enabled")),
+                "severity": severity,
+                "enforcement": enforcement,
+                "target": target,
+                "match": match,
+                "checks": checks,
+                "message": _clean_str(rule.get("message"), 500),
+            }
+        )
+    return out
 
 
 def sanitize_policy(body: Dict[str, Any]) -> Dict[str, Any]:
@@ -58,6 +169,7 @@ def sanitize_policy(body: Dict[str, Any]) -> Dict[str, Any]:
     mode = (body.get("mode") or "").strip().lower()
     if mode in ("warn", "enforce"):
         cfg["mode"] = mode
+    cfg["custom_rules"] = sanitize_custom_rules(body.get("custom_rules"))
     rules = body.get("rules") or {}
     if not isinstance(rules, dict):
         return cfg
@@ -132,6 +244,7 @@ def latest_policy_result(ex_dir: Path, name: str) -> Optional[Dict[str, Any]]:
             "blocked": bool(pol.get("blocked")),
             "blocked_by": pol.get("blocked_by") or [],
             "violations": pol.get("violations") or [],
+            "errors": pol.get("errors") or [],
         }
     return None
 

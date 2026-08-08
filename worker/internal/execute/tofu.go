@@ -387,7 +387,7 @@ func executeTofuRun(executionID string, execData map[string]any, projectID strin
 			returnCode = &rc
 			return
 		}
-		res, eerr := evaluatePolicy(raw, policyCfg)
+		res, eerr := evaluatePolicy(raw, policyCfg, stackDir)
 		if eerr != nil {
 			sendLog("[policy] ERROR: could not parse plan JSON: " + eerr.Error() + " — aborting.\n")
 			rc := 1
@@ -530,7 +530,7 @@ loop:
 	// written, so the only extra work is one local `tofu show -json`.
 	if policyCfg != nil && strings.EqualFold(action, "plan") && finalStatus == "SUCCESS" && !killed {
 		if raw, serr := showPlanJSON(stackDir, "tfplan", env); serr == nil {
-			if res, eerr := evaluatePolicy(raw, policyCfg); eerr == nil {
+			if res, eerr := evaluatePolicy(raw, policyCfg, stackDir); eerr == nil {
 				policyRes = res
 				sendLog(formatPolicyReport(res))
 				if res.Blocked {
