@@ -212,8 +212,6 @@ func syncIaCIntoStack(stackDir, provider string, log func(string)) {
 	log(fmt.Sprintf("[sync] refreshed %s modules/ and %d template .tf files in %s\n", provider, copied, stackDir))
 }
 
-
-
 // otherProviderPresent walks stacksRoot/envs/* and returns true if any stack
 // dir other than the current one has an .opensible-provider marker pointing at
 // a different provider. Used to decide whether it's safe to touch the shared
@@ -255,13 +253,12 @@ func executeTofuRun(executionID string, execData map[string]any, projectID strin
 	extraEnv, _ := runParams["env"].(map[string]any)
 	provider, _ := runParams["provider"].(string)
 
-
 	sendLog := func(text string) { client.SendLog(executionID, text, 0) }
 	startTime := time.Now()
 	finalStatus := "FAILED"
 	var returnCode *int
 	var credsPath string
-
+	// Policy gate: nil unless the backend shipped an opted-in policy payload.
 	policyCfg := parsePolicyConfig(runParams["policy"])
 	var policyRes *PolicyResult
 
@@ -276,7 +273,6 @@ func executeTofuRun(executionID string, execData map[string]any, projectID strin
 		}
 		client.FinishExecution(executionID, finalStatus, float64(time.Now().Unix()), duration, returnCode, "", result)
 	}()
-
 
 	client.Heartbeat(executionID)
 
@@ -400,14 +396,13 @@ func executeTofuRun(executionID string, execData map[string]any, projectID strin
 		}
 		policyRes = res
 		sendLog(formatPolicyReport(res))
-		if res.Denies > 0 && policyCfg.Mode == "enforce" {
+		if res.Blocked {
 			finalStatus = "FAILED"
 			rc := 3
 			returnCode = &rc
 			return
 		}
 	}
-
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -531,13 +526,14 @@ loop:
 			sendLog("\n[drift] DRIFT DETECTED — the live infrastructure differs from the recorded state (see plan above).\n")
 		}
 	}
-
+	// Policy evaluation for a plain `plan` run: reuse the tfplan that was just
+	// written, so the only extra work is one local `tofu show -json`.
 	if policyCfg != nil && strings.EqualFold(action, "plan") && finalStatus == "SUCCESS" && !killed {
 		if raw, serr := showPlanJSON(stackDir, "tfplan", env); serr == nil {
 			if res, eerr := evaluatePolicy(raw, policyCfg); eerr == nil {
 				policyRes = res
 				sendLog(formatPolicyReport(res))
-				if res.Denies > 0 && policyCfg.Mode == "enforce" {
+				if res.Blocked {
 					finalStatus = "FAILED"
 					rc := 3
 					returnCode = &rc
@@ -552,7 +548,6 @@ loop:
 	if killed {
 		finalStatus = "CANCELED"
 	}
-
 
 	// Snapshot tfstate on success.
 	if finalStatus == "SUCCESS" && (action == "apply" || action == "destroy" || action == "refresh" || action == "plan") {

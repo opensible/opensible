@@ -1,5 +1,6 @@
 /**
  * Policy-as-code gate panel for a single Cloud stack.
+ *
  */
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -10,13 +11,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { CustomPolicyRules, type CustomRule } from "@/components/cloud/CustomPolicyRules";
 import { api } from "@/lib/api";
 
 type Severity = "warn" | "deny";
+type Enforcement = "inherit" | "block" | "report";
 
 type Rule = {
   enabled: boolean;
   severity: Severity;
+  enforcement?: Enforcement;
   max_destroy?: number;
   types?: string[];
   keys?: string[];
@@ -27,11 +31,14 @@ type Rule = {
 type PolicyConfig = {
   mode: "warn" | "enforce";
   rules: Record<string, Rule>;
+  custom_rules?: CustomRule[];
 };
 
 type Violation = {
   rule: string;
-  severity: Severity;
+  name?: string;
+  severity: Severity | "info";
+  blocking?: boolean;
   address?: string;
   type?: string;
   message: string;
@@ -44,6 +51,9 @@ type LastResult = {
   verdict?: "pass" | "warn" | "fail" | string;
   denies?: number;
   warns?: number;
+  infos?: number;
+  blocked?: boolean;
+  blocked_by?: string[];
   violations?: Violation[];
 } | null;
 
@@ -52,6 +62,7 @@ type PolicyResp = {
   policy: PolicyConfig;
   last_result: LastResult;
 };
+
 
 const RULE_META: Record<string, { title: string; help: string }> = {
   deny_destroy: {
@@ -123,6 +134,19 @@ function textToList(s: string) {
     .split(",")
     .map((x) => x.trim())
     .filter(Boolean);
+}
+function ruleLabel(key: string) {
+  if (key?.startsWith("custom:")) return key.slice("custom:".length);
+  return RULE_META[key]?.title || key;
+}
+
+
+/** Does this rule stop a run, given the gate-level mode? */
+function ruleBlocks(rule: Rule, mode: PolicyConfig["mode"]) {
+  const enf = rule.enforcement || "inherit";
+  if (enf === "block") return true;
+  if (enf === "report") return false;
+  return rule.severity === "deny" && mode === "enforce";
 }
 
 export function PolicyGateCard({ stackId }: { stackId: string }) {
@@ -236,8 +260,8 @@ export function PolicyGateCard({ stackId }: { stackId: string }) {
               <span className="text-xs text-[var(--color-muted-foreground)] flex items-center gap-1">
                 <Info className="h-3.5 w-3.5" />
                 {draft.mode === "enforce"
-                  ? "Apply and destroy are blocked when a deny-severity rule fires."
-                  : "Violations are reported in the run log only."}
+                  ? "Deny-severity rules block the run unless a rule overrides it."
+                  : "Rules only report — unless a rule is set to \u201cAlways block\u201d."}
               </span>
             </div>
 
@@ -249,16 +273,18 @@ export function PolicyGateCard({ stackId }: { stackId: string }) {
                 return (
                   <div
                     key={id}
-                    className="rounded-xl border border-[var(--color-border)] p-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"
+                    className="rounded-xl border border-[var(--color-border)] p-3 flex flex-col gap-3"
                   >
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium flex items-center gap-2">
-                        {meta.title}
-                        {rule.enabled && (
-                          <Badge variant={rule.severity === "deny" ? "destructive" : "warning"}>
-                            {rule.severity === "deny" ? "Deny" : "Warn"}
-                          </Badge>
-                        )}
+                    <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium flex flex-wrap items-center gap-2">
+                        <span className="break-words">{meta.title}</span>
+                        {rule.enabled &&
+                          (ruleBlocks(rule, draft.mode) ? (
+                            <Badge variant="destructive">Blocks run</Badge>
+                          ) : (
+                            <Badge variant="warning">Reports only</Badge>
+                          ))}
                       </div>
                       <p className="text-xs text-[var(--color-muted-foreground)] mt-0.5">{meta.help}</p>
 
@@ -332,10 +358,16 @@ export function PolicyGateCard({ stackId }: { stackId: string }) {
                         </div>
                       )}
                     </div>
+                      <Toggle
+                        checked={rule.enabled}
+                        label={`Toggle ${meta.title}`}
+                        onChange={(v) => patchRule(id, { enabled: v })}
+                      />
+                    </div>
 
-                    <div className="flex items-center gap-3 shrink-0">
-                      {rule.enabled && (
-                        <div className="w-28">
+                    {rule.enabled && (
+                      <div className="flex flex-wrap items-center gap-3">
+                        <div className="w-32">
                           <Select
                             value={rule.severity}
                             onChange={(v) => patchRule(id, { severity: v as Severity })}
@@ -345,17 +377,48 @@ export function PolicyGateCard({ stackId }: { stackId: string }) {
                             ]}
                           />
                         </div>
-                      )}
-                      <Toggle
-                        checked={rule.enabled}
-                        label={`Toggle ${meta.title}`}
-                        onChange={(v) => patchRule(id, { enabled: v })}
-                      />
-                    </div>
+                        <div className="w-48">
+                          <Select
+                            value={rule.enforcement || "inherit"}
+                            onChange={(v) => patchRule(id, { enforcement: v as Enforcement })}
+                            options={[
+                              {
+                                value: "inherit",
+                                label: "Follow gate mode",
+                                description: "Blocks only when the gate is in enforce mode",
+                              },
+                              {
+                                value: "block",
+                                label: "Always block",
+                                description: "Blocks the run even while the gate is in warn mode",
+                              },
+                              {
+                                value: "report",
+                                label: "Never block",
+                                description: "Only reports, even while the gate is in enforce mode",
+                              },
+                            ]}
+                          />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })}
             </div>
+
+            <div className="h-px bg-[var(--color-border)]" />
+
+            <CustomPolicyRules
+              rules={draft.custom_rules || []}
+              mode={draft.mode}
+              onChange={(next) => {
+                setDirty(true);
+                setDraft({ ...draft, custom_rules: next });
+              }}
+            />
+
+
 
             <div className="flex items-center gap-3">
               <Button
@@ -380,13 +443,36 @@ export function PolicyGateCard({ stackId }: { stackId: string }) {
                     from {last.action || "run"}
                   </span>
                 </div>
+                {last.blocked && (last.blocked_by || []).length > 0 && (
+                  <p className="mt-1 text-xs text-[var(--color-destructive)]">
+                    Run blocked by: {(last.blocked_by || []).map(ruleLabel).join(", ")}
+                  </p>
+                )}
                 {last.violations && last.violations.length > 0 ? (
                   <ul className="mt-2 space-y-1">
                     {last.violations.slice(0, 25).map((v, i) => (
                       <li key={i} className="text-xs flex flex-wrap items-baseline gap-2">
-                        <Badge variant={v.severity === "deny" ? "destructive" : "warning"}>
-                          {v.severity === "deny" ? "DENY" : "WARN"}
+                        <Badge
+                          variant={
+                            v.blocking || v.severity === "deny"
+                              ? "destructive"
+                              : v.severity === "info"
+                              ? "primary"
+                              : "warning"
+                          }
+                        >
+                          {v.blocking
+                            ? "BLOCK"
+                            : v.severity === "deny"
+                            ? "DENY"
+                            : v.severity === "info"
+                            ? "INFO"
+                            : "WARN"}
                         </Badge>
+                        <span className="text-[var(--color-muted-foreground)]">
+                          {v.name || ruleLabel(v.rule)}
+                        </span>
+
                         <code className="font-mono">{v.address || "plan"}</code>
                         <span className="text-[var(--color-muted-foreground)]">{v.message}</span>
                       </li>

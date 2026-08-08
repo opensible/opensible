@@ -31,11 +31,29 @@ export type PlanSummary = {
   applied: boolean;
 };
 
+export type PolicyViolation = {
+  level: "warn" | "deny" | "block";
+  rule: string;
+  address: string;
+  message: string;
+};
+
+export type PolicyReport = {
+  mode: string;
+  denies: number;
+  warns: number;
+  passed: boolean;
+  blocked: boolean;
+  blockedBy: string[];
+  violations: PolicyViolation[];
+};
+
 export type ParsedPlan = {
   resources: PlanResource[];
   summary: PlanSummary | null;
   outputs: PlanAttrChange[];
   driftDetected: boolean;
+  policy: PolicyReport | null;
   noDrift: boolean;
   /** Whether anything plan-like was found at all. */
   hasPlan: boolean;
@@ -96,9 +114,42 @@ function cleanValue(v: string): string {
     .trim();
 }
 
+/** Parse the `[policy]` block emitted by the worker's policy-as-code gate. */
+export function parsePolicyReport(log: string): PolicyReport | null {
+  if (!log || !/\[policy\]/.test(log)) return null;
+  const head = /\[policy\]\s*mode=(\S+)\s+deny=(\d+)\s+warn=(\d+)/.exec(log);
+  if (!head) return null;
+
+  const violations: PolicyViolation[] = [];
+  const re = /\[policy\]\s+(WARN|DENY|BLOCK)\s+(\S+)\s+(\S+)\s+[—-]\s+(.*)$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(log))) {
+    violations.push({
+      level: (m[1] ?? "WARN").toLowerCase() as PolicyViolation["level"],
+      rule: m[2] ?? "",
+      address: (m[3] ?? "").replace(/^\(plan\)$/, ""),
+      message: (m[4] ?? "").trim(),
+    });
+  }
+
+  const blockedMatch = /\[policy\]\s*FAILED\s*[—-]\s*run blocked by rule\(s\):\s*(.*)$/m.exec(log);
+  return {
+    mode: head[1] ?? "warn",
+    denies: Number(head[2] ?? 0),
+    warns: Number(head[3] ?? 0),
+    passed: /\[policy\]\s*PASS\b/.test(log),
+    blocked: Boolean(blockedMatch),
+    blockedBy: blockedMatch
+      ? (blockedMatch[1] ?? "").split(",").map((r) => r.trim()).filter(Boolean)
+      : [],
+    violations,
+  };
+}
+
 export function parseTofuPlan(log: string): ParsedPlan {
   const empty: ParsedPlan = {
-    resources: [], summary: null, outputs: [], driftDetected: false, noDrift: false, hasPlan: false,
+    resources: [], summary: null, outputs: [], driftDetected: false, noDrift: false,
+    policy: null, hasPlan: false,
   };
   if (!log) return empty;
 
@@ -176,6 +227,7 @@ export function parseTofuPlan(log: string): ParsedPlan {
     /Objects have changed outside of (OpenTofu|Terraform)/i.test(log) ||
     resources.some((r) => r.action === "drift");
   const noDrift = !driftDetected && /\[drift\]\s*no drift/i.test(log);
+  const policy = parsePolicyReport(log);
 
   return {
     resources,
@@ -183,7 +235,10 @@ export function parseTofuPlan(log: string): ParsedPlan {
     outputs,
     driftDetected,
     noDrift,
-    hasPlan: resources.length > 0 || summary !== null || outputs.length > 0 || driftDetected || noDrift,
+    policy,
+    hasPlan:
+      resources.length > 0 || summary !== null || outputs.length > 0 || driftDetected || noDrift ||
+      policy !== null,
   };
 }
 
