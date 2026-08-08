@@ -1,5 +1,6 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, CheckCircle2, Download, Search, Rocket, Bomb, RefreshCcw, RefreshCw, Clock,
@@ -99,6 +100,14 @@ function StackDetail() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [showInventory, setShowInventory] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [settingsOpen]);
+
 
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [flowLog, setFlowLog] = useState("");
@@ -411,13 +420,13 @@ function StackDetail() {
         </div>
       )}
 
-      {settingsOpen && (
-      <div className="fixed inset-0 z-50 flex justify-end bg-black/50" onClick={() => setSettingsOpen(false)}>
+      {settingsOpen && createPortal(
+      <div className="fixed inset-0 z-[100] flex justify-end bg-black/50" onClick={() => setSettingsOpen(false)}>
       <div
-        className="h-full w-full max-w-2xl bg-[var(--color-card)] border-l border-[var(--color-border)] shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-200"
+        className="flex h-screen w-full max-w-2xl flex-col bg-[var(--color-card)] border-l border-[var(--color-border)] shadow-2xl animate-in slide-in-from-right duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)] sticky top-0 bg-[var(--color-card)] z-10">
+        <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)] bg-[var(--color-card)] shrink-0">
           <div>
             <h3 className="text-base font-semibold flex items-center gap-2">
               <Settings className="h-4 w-4" /> Settings
@@ -428,7 +437,8 @@ function StackDetail() {
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="p-4 pb-24 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4">
+
       <Card>
 
         <CardHeader className="flex flex-row items-start justify-between gap-4">
@@ -504,7 +514,8 @@ function StackDetail() {
       <PolicyGateCard stackId={stackId} />
         </div>
       </div>
-      </div>
+      </div>,
+      document.body
       )}
 
 
