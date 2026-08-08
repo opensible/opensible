@@ -18,6 +18,7 @@ POLICY_RULE_TYPES = {
 }
 
 SEVERITIES = ("warn", "deny")
+ENFORCEMENTS = ("inherit", "block", "report")
 
 
 def default_policy() -> Dict[str, Any]:
@@ -26,11 +27,11 @@ def default_policy() -> Dict[str, Any]:
     return {
         "mode": "warn",  # warn | enforce
         "rules": {
-            "deny_destroy": {"enabled": False, "severity": "deny", "max_destroy": 0},
-            "denied_resource_types": {"enabled": False, "severity": "deny", "types": []},
-            "require_tags": {"enabled": False, "severity": "warn", "keys": ["environment", "owner"]},
-            "deny_public_ingress": {"enabled": True, "severity": "deny", "ports": [22, 3389]},
-            "max_created": {"enabled": False, "severity": "warn", "limit": 50},
+            "deny_destroy": {"enabled": False, "severity": "deny", "enforcement": "inherit", "max_destroy": 0},
+            "denied_resource_types": {"enabled": False, "severity": "deny", "enforcement": "inherit", "types": []},
+            "require_tags": {"enabled": False, "severity": "warn", "enforcement": "inherit", "keys": ["environment", "owner"]},
+            "deny_public_ingress": {"enabled": True, "severity": "deny", "enforcement": "inherit", "ports": [22, 3389]},
+            "max_created": {"enabled": False, "severity": "warn", "enforcement": "inherit", "limit": 50},
         },
     }
 
@@ -68,6 +69,9 @@ def sanitize_policy(body: Dict[str, Any]) -> Dict[str, Any]:
         sev = (incoming.get("severity") or "").strip().lower()
         if sev in SEVERITIES:
             target["severity"] = sev
+        enf = (incoming.get("enforcement") or "").strip().lower()
+        if enf in ENFORCEMENTS:
+            target["enforcement"] = enf
         if rid == "deny_destroy":
             try:
                 target["max_destroy"] = max(0, int(incoming.get("max_destroy", 0)))
@@ -125,6 +129,8 @@ def latest_policy_result(ex_dir: Path, name: str) -> Optional[Dict[str, Any]]:
             "verdict": pol.get("verdict"),
             "denies": pol.get("denies"),
             "warns": pol.get("warns"),
+            "blocked": bool(pol.get("blocked")),
+            "blocked_by": pol.get("blocked_by") or [],
             "violations": pol.get("violations") or [],
         }
     return None
