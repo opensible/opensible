@@ -414,7 +414,7 @@ function StackDetail() {
       {settingsOpen && (
       <div className="fixed inset-0 z-50 flex justify-end bg-black/50" onClick={() => setSettingsOpen(false)}>
       <div
-        className="h-full w-full max-w-xl bg-[var(--color-card)] border-l border-[var(--color-border)] shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-200"
+        className="h-full w-full max-w-2xl bg-[var(--color-card)] border-l border-[var(--color-border)] shadow-2xl overflow-y-auto animate-in slide-in-from-right duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-4 border-b border-[var(--color-border)] sticky top-0 bg-[var(--color-card)] z-10">
@@ -428,7 +428,7 @@ function StackDetail() {
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="p-4 space-y-4">
+        <div className="p-4 pb-24 space-y-4">
       <Card>
 
         <CardHeader className="flex flex-row items-start justify-between gap-4">
