@@ -8,7 +8,7 @@ services:
     volumes:
       - opensible-data:/app/data
     environment:
-      TZ: ${TZ:-UTC}
+      TZ: Asia/Phnom_Penh
       FLASK_ENV: production
       DATA_DIR: /app/data
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-${JWT_SECRET}}
@@ -26,7 +26,7 @@ services:
     ports:
       - "8080:80"
     environment:
-      TZ: ${TZ:-UTC}
+      TZ: Asia/Phnom_Penh
       API_URL: ""
       BACKEND_HOST: opensible-server
       BACKEND_PORT: "5000"
@@ -37,20 +37,19 @@ services:
     image: docker.io/ossopensible/opensible-worker:latest
     container_name: opensible-worker
     restart: unless-stopped
+    network_mode: host
     volumes:
       - opensible-data:/app/data
       - ./ssh-keys:/root/.ssh:ro
     environment:
-      TZ: ${TZ:-UTC}
+      TZ: Asia/Phnom_Penh
       WORKER_NAME: worker-go
       WORKER_TAGS: go
-      # Reach the API over the compose network (no host networking required).
-      WORKER_SERVER_URL: ${WORKER_SERVER_URL:-http://opensible-server:5000}
+      WORKER_SERVER_URL: http://127.0.0.1:5000
       WORKER_TOKEN_FILE: /app/data/worker.token
       DATA_DIR: /app/data
       WORKER_REGISTRATION_SECRET: ${WORKER_REGISTRATION_SECRET:-}
       WORKER_MAX_CONCURRENCY: ${WORKER_MAX_CONCURRENCY:-3}
-      # Vault helper stays loopback inside the worker container.
       VAULT_SERVER_HOST: 127.0.0.1
       VAULT_SERVER_PORT: 9998
       VAULT_SERVER_SECRET: ${VAULT_SERVER_SECRET:-}
