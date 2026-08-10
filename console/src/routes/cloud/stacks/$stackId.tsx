@@ -5,7 +5,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, CheckCircle2, Download, Search, Rocket, Bomb, RefreshCcw, RefreshCw, Clock,
   GitBranch, GitPullRequestArrow, Edit, Trash2, KeyRound, AlertTriangle, Boxes, Github, Radar, Settings, X,
+  MoreHorizontal,
 } from "lucide-react";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { Breadcrumbs } from "@/components/app-shell/Breadcrumbs";
 import { Button } from "@/components/ui/button";
@@ -15,6 +19,9 @@ import { VmInventoryDialog } from "@/components/cloud/VmInventoryDialog";
 import { RunFlowGraph } from "@/components/cloud/RunFlowGraph";
 import { PlanDiff } from "@/components/cloud/PlanDiff";
 import { PolicyGateCard } from "@/components/cloud/PolicyGateCard";
+import { StateManagementCard } from "@/components/cloud/StateManagementCard";
+import { StateStatusStrip, useStateOverview, RestoreStateDialog, type StateVersion } from "@/components/cloud/StateStatusStrip";
+
 import { ProvisioningLogDialog } from "@/routes/cloud/summary";
 import { api } from "@/lib/api";
 import { qk } from "@/lib/query";
@@ -110,6 +117,16 @@ function StackDetail() {
 
 
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [restoreVersion, setRestoreVersion] = useState<StateVersion | null>(null);
+  const stateOverviewQ = useStateOverview(stackId);
+  const versionByRun = new Map<string, StateVersion>();
+  for (const v of stateOverviewQ.data?.versions || []) {
+    const ids = [v.run_id, ...(v.run_ids || [])].filter(Boolean) as string[];
+    for (const id of ids) {
+      if (!versionByRun.has(String(id))) versionByRun.set(String(id), v);
+    }
+  }
+
   const [flowLog, setFlowLog] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
@@ -332,7 +349,26 @@ function StackDetail() {
               search={{ edit: stackId } as any}
             ><Edit className="h-4 w-4" /> Edit</Link>
           </Button>
-          <Button variant="destructive" size="sm" onClick={deleteStack} disabled={deleteMut.isPending}><Trash2 className="h-4 w-4" /> Delete</Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" aria-label="More actions">
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={() => setSettingsOpen(true)}>
+                <Settings className="h-4 w-4 mr-2" /> Stack settings
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                className="text-[var(--color-destructive)] focus:text-[var(--color-destructive)] focus:bg-[var(--color-destructive)]/10"
+                onSelect={() => deleteStack()}
+                disabled={deleteMut.isPending}
+              >
+                <Trash2 className="h-4 w-4 mr-2" /> Delete stack
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -368,9 +404,6 @@ function StackDetail() {
         <Button variant="outline" onClick={() => setShowInventory(true)}>
           <Boxes className="h-4 w-4" /> Inventory Resources
         </Button>
-        <Button variant="outline" onClick={() => setSettingsOpen(true)}>
-          <Settings className="h-4 w-4" /> Settings
-        </Button>
 
         {runStatus.status && (
           <div className="ml-auto text-xs flex items-center gap-2">
@@ -380,6 +413,10 @@ function StackDetail() {
           </div>
         )}
       </div>
+
+      <StateStatusStrip stackId={stackId} onManage={() => setSettingsOpen(true)} />
+
+
 
       <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-muted)]/40 px-3 py-2 flex items-center justify-between gap-3 flex-wrap">
         <div className="text-xs text-[var(--color-muted-foreground)]">
@@ -512,6 +549,9 @@ function StackDetail() {
       </Card>
 
       <PolicyGateCard stackId={stackId} />
+
+      <StateManagementCard stackId={stackId} />
+
         </div>
       </div>
       </div>,
@@ -534,7 +574,10 @@ function StackDetail() {
         </>
       )}
 
+
+
       <Card>
+
         <CardHeader><CardTitle className="text-base">terraform.tfvars</CardTitle></CardHeader>
         <CardContent>
           <pre className="rounded-md bg-[var(--color-muted)] font-mono text-xs p-4 overflow-auto max-h-[400px] whitespace-pre">
@@ -571,12 +614,14 @@ function StackDetail() {
                     <th className="text-left px-3 py-2 font-medium">Duration</th>
                     <th className="text-left px-3 py-2 font-medium">Age</th>
                     <th className="text-left px-3 py-2 font-medium">Exit</th>
+                    <th className="text-left px-3 py-2 font-medium">State</th>
                   </tr>
                 </thead>
                 <tbody>
                   {stackRuns.map((r) => {
                     const startedSec = r.started_at ? Number(r.started_at) : undefined;
                     const finishedSec = r.finished_at ? Number(r.finished_at) : undefined;
+                    const snapshot = versionByRun.get(String(r.run_id));
                     return (
                     <tr
                       key={r.run_id}
@@ -592,6 +637,27 @@ function StackDetail() {
                       <td className="px-3 py-2 whitespace-nowrap text-[var(--color-muted-foreground)]">{fmtDurSec(startedSec, finishedSec)}</td>
                       <td className="px-3 py-2 whitespace-nowrap text-[var(--color-muted-foreground)]">{fmtRelSec(startedSec)}</td>
                       <td className="px-3 py-2 font-mono text-[var(--color-muted-foreground)]">{r.returncode ?? "—"}</td>
+                      <td className="px-3 py-2 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                        {snapshot ? (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="h-6 px-2 text-[10px]"
+                            title={`Roll back to the state captured before this ${r.action} run`}
+                            onClick={() => setRestoreVersion(snapshot)}
+                          >
+                            <RefreshCcw className="h-3 w-3 mr-1" /> Rollback to here
+                          </Button>
+                        ) : (
+                          <span
+                            className="text-[var(--color-muted-foreground)]"
+                            title="No state snapshot for this run — snapshots are captured for apply, destroy and refresh runs only."
+                          >
+                            —
+                          </span>
+                        )}
+                      </td>
+
                     </tr>
                     );
                   })}
@@ -639,6 +705,10 @@ function StackDetail() {
         onCancel={() => setConfirmDelete(false)}
         onConfirm={() => { setConfirmDelete(false); deleteMut.mutate(); }}
       />
+
+      {restoreVersion && (
+        <RestoreStateDialog stackId={stackId} version={restoreVersion} onClose={() => setRestoreVersion(null)} />
+      )}
 
       {showInventory && <VmInventoryDialog stackId={stackId} onClose={() => setShowInventory(false)} />}
     </div>
