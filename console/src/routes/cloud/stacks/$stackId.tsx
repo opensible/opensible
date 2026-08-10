@@ -169,6 +169,27 @@ function StackDetail() {
   });
   const stackRuns = (runsQ.data?.runs || []).filter((r) => r.stack === stackId);
 
+  const hydratedRef = useRef(false);
+  const latestRun = stackRuns[0];
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    if (running || !latestRun?.run_id) return;
+    hydratedRef.current = true;
+    (async () => {
+      try {
+        const run = await api<RunResp>(
+          "GET",
+          `/api/cloud/stacks/${encodeURIComponent(stackId)}/runs/${encodeURIComponent(latestRun.run_id)}`
+        );
+        setFlowLog(run.log ?? "");
+        setLastAction(latestRun.action || "plan");
+        setRunStatus({ status: run.status ?? latestRun.status, runId: latestRun.run_id, returncode: run.returncode });
+      } catch {
+        hydratedRef.current = false;
+      }
+    })();
+  }, [latestRun?.run_id, running, stackId]);
+
   useEffect(() => () => { if (pollRef.current) clearInterval(pollRef.current); }, []);
 
   function stopPoll() { if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; } }
