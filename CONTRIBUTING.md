@@ -13,7 +13,18 @@ We follow the standard GitHub fork-and-pull-request model for all contributions.
 3. **Fork the repo**: Create a fork of the OpenSible repository in your own GitHub account.
 4. **Branching**: Create a new branch for your work (e.g., `feature/new-aws-stack` or `fix/worker-log-caching`).
 5. **Develop**: Make your changes. If you are adding code, please ensure you also add relevant tests.
-6. **Lint and Test**: Run our automated linting and test suites to ensure your changes don't break existing functionality.
+6. **Lint and Test**: Run the CI suites locally before opening a PR:
+
+   ```bash
+   # Server
+   cd server && pip install -r requirements-dev.txt && pytest
+
+   # Worker
+   cd worker && go test ./...
+
+   # Console
+   cd console && bun install && bun run build
+   ```
 7. **Pull Request**: Open a PR against our `develop` branch. Provide a clear description of what your PR does and why it is needed.
 8. **Code Review**: A maintainer will review your PR. Be prepared to make adjustments based on their feedback.
 

@@ -1,15 +1,5 @@
 """
 Cloud Provisioning — OpenTofu/Terraform stack management.
-
-Exposes a Flask Blueprint with endpoints to:
-  * list available providers (ByteDC active, AWS coming soon)
-  * return the wizard schema (derived from the ByteDC variables.tf)
-  * CRUD stacks under IaC/opentofu-bytedc/envs/<name>/
-  * run `tofu init|plan|apply|destroy` and stream logs back
-
-Secrets (access_key, secret_key, ecs_admin_pass) are stored encrypted
-under data/cloud-provisioning/<stack>/secrets.enc and only materialised
-into a chmod-600 credentials.auto.tfvars at execution time.
 """
 from __future__ import annotations
 
@@ -893,14 +883,11 @@ def _create_execution(project_id: Optional[str], stack: str, action: str, worker
         "secret_keys": list(_secret_keys_for(provider)),
         "env": {"TF_IN_AUTOMATION": "1"},
     }
-    # Policy-as-code gate: only shipped to the worker when the stack opted in,
-    # so stacks with the gate off pay exactly zero extra cost.
+
     if _policy_enabled(project_id, stack) and action in ("plan", "apply", "destroy"):
         run_params["policy"] = _policy_config(project_id, stack)
     if not worker_id:
-        # Tofu needs the backend-local IaC tree at stack_dir; auto-pin to a
-        # co-located worker (tagged 'local' or 'default') so multi-worker
-        # setups don't dispatch to a remote VM that can't see the files.
+
         try:
             from services.worker_registry import load_all_workers, is_worker_online
             candidates = []
@@ -949,12 +936,35 @@ def stacks_action(name):
     _cu = getattr(request, "current_user", {}) or {}
     _tb = _cu.get("username") or _cu.get("email") or _cu.get("user_id") or ""
     _tbid = _cu.get("user_id") or ""
+
+    _mutating = action in _cloud_state.MUTATING_ACTIONS
+    _dd = _stack_data_dir(pid, name)
+    if _mutating:
+        _existing = _cloud_state.read_lock(_dd, _get_execution_record, pid)
+        if _existing:
+            return jsonify({
+                "error": f"State is locked by {_existing.get('who')} "
+                         f"({_existing.get('operation')}). Wait for that run to finish, "
+                         f"or force-unlock from the State management panel.",
+                "lock": _existing,
+            }), 409
+        pass
+
     try:
         eid = _create_execution(pid, name, action, worker_id=worker_id, triggered_by=_tb, triggered_by_user_id=_tbid)
     except Exception as e:
         current_app.logger.error(f"[cloud] enqueue {action} for {name} failed: {e}")
         return jsonify({"error": f"Failed to queue run: {e}"}), 500
+    if _mutating:
+        _cloud_state.snapshot_state(_stack_dir(pid, name), _dd,
+                                    actor=_tb or "unknown", reason=f"pre-{action}",
+                                    run_id=eid)
+        _cloud_state.acquire_lock(_dd, actor=_tb or "unknown", operation=action,
+                                  run_id=eid, get_execution=_get_execution_record,
+                                  project_id=pid)
+    _cloud_state.append_audit(_dd, "run.queued", _tb or "unknown", action=action, run_id=eid)
     _save_meta(pid, name, last_action=action, last_status="queued", last_run_id=eid)
+
     return jsonify({
         "ok": True,
         "run_id": eid,
@@ -1105,7 +1115,42 @@ _register_policy_routes(
 )
 
 
+# ---------------------------------------------------------------------------
+# State management — locking visibility, versioning/rollback, remote backend.
+# ---------------------------------------------------------------------------
 
+try:
+    from services import cloud_state as _cloud_state
+except ImportError:  # pragma: no cover
+    from . import cloud_state as _cloud_state  # type: ignore
+
+
+def _current_actor() -> str:
+    cu = getattr(request, "current_user", {}) or {}
+    return str(cu.get("username") or cu.get("email") or cu.get("user_id") or "unknown")
+
+
+def _get_execution_record(execution_id, project_id=None):
+    try:
+        from services.execution_history import get_execution as _ge
+    except ImportError:  # pragma: no cover
+        return None
+    try:
+        return _ge(execution_id, project_id=project_id or "default")
+    except Exception:
+        return None
+
+
+_cloud_state.register_state_routes(
+    bp,
+    require_auth=require_auth,
+    get_project_id=lambda: _get_project_id(),
+    valid_name=lambda n: _valid_name(n),
+    stack_dir=lambda pid, n: _stack_dir(pid, n),
+    stack_data_dir=lambda pid, n: _stack_data_dir(pid, n),
+    current_actor=_current_actor,
+    get_execution=_get_execution_record,
+)
 
 
 def _status_to_ui(s: str) -> str:
