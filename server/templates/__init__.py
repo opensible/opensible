@@ -14,6 +14,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, List
 
+from .validation import TemplateValidationError
+
 from . import docker_compose as _docker_compose
 from . import nginx_reverse_proxy as _nginx_rp
 from . import k3s_bootstrap as _k3s

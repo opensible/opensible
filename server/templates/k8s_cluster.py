@@ -15,15 +15,25 @@ Renders:
 """
 from __future__ import annotations
 
+import ipaddress
+import re
+from collections.abc import Mapping
 from typing import Any, Dict, List
 
 from ._common import (  # noqa: F401
     slugify, yaml_str, render_hosts,
     VAULT_FILES_VARIABLE, parse_vault_files, vars_files_lines,
 )
+from .validation import TemplateValidationError
 
 
 K8S_TEMPLATE_GENERATION = "2026-07-metrics-tls-v10"
+
+_KUBERNETES_VERSION_RE = re.compile(r"^v?\d+\.\d+\.\d+$")
+_ENDPOINT_HOST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$")
+_ALLOWED_CNI = {"calico", "flannel", "none"}
+_ALLOWED_KUBE_PROXY_MODES = {"iptables", "ipvs", "none"}
+_ALLOWED_STORAGE = {"none", "longhorn", "local-path", "openebs-hostpath", "nfs-subdir"}
 
 
 TEMPLATE = {
@@ -150,6 +160,133 @@ def _norm_nodes(raw: Any, default_user: str, default_port: Any) -> List[Dict[str
     return out
 
 
+def _add_error(errors: Dict[str, List[str]], field: str, message: str) -> None:
+    errors.setdefault(field, []).append(message)
+
+
+def _string_value(values: Dict[str, Any], field: str, default: str) -> str:
+    raw = values.get(field)
+    return str(default if raw is None or raw == "" else raw).strip()
+
+
+def _validate_port(errors: Dict[str, List[str]], field: str, raw: Any) -> None:
+    if raw is None or raw == "":
+        return
+    if isinstance(raw, bool):
+        _add_error(errors, field, "must be an integer from 1 to 65535")
+        return
+    try:
+        port = int(raw)
+    except (TypeError, ValueError):
+        _add_error(errors, field, "must be an integer from 1 to 65535")
+        return
+    if not 1 <= port <= 65535:
+        _add_error(errors, field, "must be an integer from 1 to 65535")
+
+
+def _validate_nodes(errors: Dict[str, List[str]], values: Dict[str, Any]) -> None:
+    seen_addresses: Dict[str, str] = {}
+    seen_names: Dict[str, str] = {}
+    default_port = values.get("ssh_port_default", 22)
+    _validate_port(errors, "ssh_port_default", default_port)
+
+    for field, required in (("control_planes", True), ("workers", False)):
+        raw_nodes = values.get(field, [] if not required else None)
+        if not isinstance(raw_nodes, list):
+            _add_error(errors, field, "must be a list of node mappings")
+            continue
+        if required and not raw_nodes:
+            _add_error(errors, field, "must contain at least one node")
+        for index, raw_node in enumerate(raw_nodes):
+            item_field = f"{field}[{index}]"
+            if not isinstance(raw_node, Mapping):
+                _add_error(errors, item_field, "must be a node mapping")
+                continue
+            address = str(raw_node.get("ip") or "").strip()
+            if not address:
+                _add_error(errors, f"{item_field}.ip", "is required")
+            else:
+                address_key = address.lower()
+                if address_key in seen_addresses:
+                    _add_error(errors, f"{item_field}.ip", f"duplicates {seen_addresses[address_key]}")
+                else:
+                    seen_addresses[address_key] = f"{item_field}.ip"
+
+            _validate_port(errors, f"{item_field}.ssh_port", raw_node.get("ssh_port"))
+            name = str(raw_node.get("name") or f"node-{index + 1}").strip()
+            normalized_name = slugify(name, f"node-{index + 1}")[:63].strip("-") or f"node-{index + 1}"
+            if normalized_name in seen_names:
+                _add_error(errors, f"{item_field}.name", f"normalizes to duplicate Kubernetes node name {normalized_name!r}")
+            else:
+                seen_names[normalized_name] = f"{item_field}.name"
+
+
+def _validate_values(values: Dict[str, Any]) -> None:
+    """Raise structured errors before interpolating kubeadm configuration."""
+    if not isinstance(values, dict):
+        raise TemplateValidationError({"values": "must be an object"})
+
+    errors: Dict[str, List[str]] = {}
+    version = _string_value(values, "kubernetes_version", "1.30.4")
+    if not _KUBERNETES_VERSION_RE.fullmatch(version):
+        _add_error(errors, "kubernetes_version", "must be a full version such as 1.30.4")
+
+    networks: Dict[str, ipaddress.IPv4Network] = {}
+    for field, default in (("pod_cidr", "10.244.0.0/16"), ("service_cidr", "10.96.0.0/12")):
+        raw = _string_value(values, field, default)
+        try:
+            network = ipaddress.ip_network(raw, strict=True)
+        except ValueError:
+            _add_error(errors, field, "must be a strict IPv4 network CIDR")
+            continue
+        if not isinstance(network, ipaddress.IPv4Network):
+            _add_error(errors, field, "must be a strict IPv4 network CIDR")
+            continue
+        networks[field] = network
+    if len(networks) == 2 and networks["pod_cidr"].overlaps(networks["service_cidr"]):
+        _add_error(errors, "pod_cidr", "must not overlap service_cidr")
+        _add_error(errors, "service_cidr", "must not overlap pod_cidr")
+
+    cni = _string_value(values, "cni_plugin", "calico").lower()
+    if cni not in _ALLOWED_CNI:
+        _add_error(errors, "cni_plugin", "must be one of: calico, flannel, none")
+    elif cni == "flannel" and networks.get("pod_cidr") != ipaddress.IPv4Network("10.244.0.0/16"):
+        _add_error(errors, "pod_cidr", "must be 10.244.0.0/16 when cni_plugin is flannel")
+
+    kube_proxy_mode = _string_value(values, "kube_proxy_mode", "iptables").lower()
+    if kube_proxy_mode not in _ALLOWED_KUBE_PROXY_MODES:
+        _add_error(errors, "kube_proxy_mode", "must be one of: iptables, ipvs, none")
+    elif kube_proxy_mode == "none" and cni != "none":
+        _add_error(errors, "kube_proxy_mode", "none requires cni_plugin to be none")
+
+    runtime = _string_value(values, "container_runtime", "containerd").lower()
+    if runtime != "containerd":
+        _add_error(errors, "container_runtime", "must be containerd")
+
+    storage = _string_value(values, "storage_provisioner", "none").lower()
+    if storage not in _ALLOWED_STORAGE:
+        _add_error(errors, "storage_provisioner", "must be one of: none, longhorn, local-path, openebs-hostpath, nfs-subdir")
+    elif storage == "nfs-subdir":
+        if not _string_value(values, "nfs_server", ""):
+            _add_error(errors, "nfs_server", "is required when storage_provisioner is nfs-subdir")
+        raw_nfs_path = values.get("nfs_path")
+        nfs_path = "/srv/nfs/k8s" if raw_nfs_path is None else str(raw_nfs_path).strip()
+        if not nfs_path.startswith("/"):
+            _add_error(errors, "nfs_path", "must be an absolute path when storage_provisioner is nfs-subdir")
+
+    endpoint = _string_value(values, "control_plane_endpoint", "")
+    if endpoint:
+        host, separator, port_text = endpoint.rpartition(":")
+        if not separator or not _ENDPOINT_HOST_RE.fullmatch(host) or ":" in host:
+            _add_error(errors, "control_plane_endpoint", "must use host:port syntax")
+        else:
+            _validate_port(errors, "control_plane_endpoint", port_text)
+
+    _validate_nodes(errors, values)
+    if errors:
+        raise TemplateValidationError(errors)
+
+
 def _inventory_yaml(cluster: str, cps: List[Dict[str, Any]], workers: List[Dict[str, Any]]) -> str:
     cp_group = f"{cluster}_control_plane"
     wk_group = f"{cluster}_workers"
@@ -181,6 +318,7 @@ def _inventory_yaml(cluster: str, cps: List[Dict[str, Any]], workers: List[Dict[
 
 
 def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
+    _validate_values(values)
     cluster = slugify(values.get("cluster_name") or "cluster", "cluster")
     cp_group = f"{cluster}_control_plane"
     wk_group = f"{cluster}_workers"
@@ -192,9 +330,9 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     become = "true" if values.get("become", True) else "false"
     ha_mode = bool(values.get("ha_mode"))
     cp_endpoint = str(values.get("control_plane_endpoint") or "").strip()
-    pod_cidr = values.get("pod_cidr") or "10.244.0.0/16"
-    service_cidr = values.get("service_cidr") or "10.96.0.0/12"
-    cni = (values.get("cni_plugin") or "calico").lower()
+    pod_cidr = _string_value(values, "pod_cidr", "10.244.0.0/16")
+    service_cidr = _string_value(values, "service_cidr", "10.96.0.0/12")
+    cni = _string_value(values, "cni_plugin", "calico").lower()
     reset_existing = bool(values.get("reset_existing_cluster", False))
     install_metrics = bool(values.get("install_metrics_server", True))
     storage = str(values.get("storage_provisioner") or "none").lower().strip()
@@ -208,19 +346,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     nfs_path = str(values.get("nfs_path") or "/srv/nfs/k8s").strip()
     allow_cp_sched = bool(values.get("allow_scheduling_on_control_plane", False))
     fetch_kubeconfig = bool(values.get("fetch_kubeconfig", True))
-    kube_proxy_mode = str(values.get("kube_proxy_mode") or "iptables").lower().strip()
-    if kube_proxy_mode not in ("iptables", "ipvs", "none"):
-        kube_proxy_mode = "iptables"
-    requested_kube_proxy_mode = kube_proxy_mode
-    # Calico/Flannel do not replace Kubernetes Service routing by default. If
-    # kube-proxy is skipped, calico-node's install-cni init container commonly
-    # cannot reach the apiserver Service (10.96.0.1), leaving every node
-    # NotReady with "CNI plugin not initialized". Treat "none" as IPVS for
-    # built-in Calico/Flannel so users can avoid iptables mode without breaking
-    # the cluster. True kube-proxy-less mode remains available with CNI=None for
-    # users who install Cilium/Calico eBPF manually.
-    if kube_proxy_mode == "none" and cni in ("calico", "flannel"):
-        kube_proxy_mode = "ipvs"
+    kube_proxy_mode = _string_value(values, "kube_proxy_mode", "iptables").lower()
 
     cps = _norm_nodes(values.get("control_planes"),
                       values.get("ssh_user_default") or "root",
@@ -237,10 +363,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     parts.append(f"# OpenSible k8s template generation: {K8S_TEMPLATE_GENERATION}")
     parts.append(f"# Cluster: {cluster} (HA={ha_mode}, control-plane={len(cps)}, workers={len(workers)})")
     parts.append(f"# Kubernetes: v{version} | CNI: {cni} | Pod CIDR: {pod_cidr}")
-    if requested_kube_proxy_mode != kube_proxy_mode:
-        parts.append(f"# kube-proxy: requested {requested_kube_proxy_mode}, using {kube_proxy_mode} because {cni} does not replace Service routing by default")
-    else:
-        parts.append(f"# kube-proxy: {kube_proxy_mode}")
+    parts.append(f"# kube-proxy: {kube_proxy_mode}")
     parts.append(f"# Inventory sidecar: inventories/{cluster}.yml")
     parts.append("")
 
