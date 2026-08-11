@@ -1,16 +1,51 @@
-# OpenSible
-
-> **GitOps control plane for OpenTofu & Ansible** - provision, configure and deploy across cloud, on-prem and hybrid, self-hosted and forever free.
 
 ---
 
-[![License](https://img.shields.io/badge/License-AGPL--3.0-blue.svg)](https://github.com/opensible/opensible/blob/main/LICENSE)
-[![Release](https://img.shields.io/github/v/release/opensible/opensible)](https://github.com/opensible/opensible/releases)
-[![Website](https://img.shields.io/badge/Website-opensible.com-0ea5e9)](https://opensible.com)
-[![Docs](https://img.shields.io/badge/Docs-Wiki-10b981)](https://github.com/opensible/opensible/wiki)
+<p align="center">
+  <picture>
+    <source
+      media="(prefers-color-scheme: dark)"
+      srcset="https://cdn.opensible.com/banners/opensible_light_logo.svg"
+    />
+    <source
+      media="(prefers-color-scheme: light)"
+      srcset="https://cdn.opensible.com/banners/opensible_dark_logo.svg"
+    />
+    <img
+      src="https://cdn.opensible.com/banners/opensible_dark_logo.svg"
+      alt="OpenSible"
+      width="500"
+    />
+  </picture>
+</p>
 
-![OpenSible Banner](https://cdn.opensible.com/banners/readme-banner.png)
-![OpenSible Stack Deployment](https://cdn.opensible.com/banners/stack-deployment.png)
+<p align="center">
+  <strong>GitOps control plane for OpenTofu &amp; Ansible</strong><br />
+  Provision, configure, and deploy across cloud, on-prem, and hybrid environments — self-hosted and forever free.
+</p>
+
+<p align="center">
+  <a href="https://github.com/opensible/opensible/blob/main/LICENSE">
+    <img src="https://img.shields.io/badge/License-AGPL--3.0-blue.svg" alt="License" />
+  </a>
+  <a href="https://github.com/opensible/opensible/releases">
+    <img src="https://img.shields.io/github/v/release/opensible/opensible" alt="Release" />
+  </a>
+  <a href="https://opensible.com">
+    <img src="https://img.shields.io/badge/Website-opensible.com-0ea5e9" alt="Website" />
+  </a>
+  <a href="https://github.com/opensible/opensible/wiki">
+    <img src="https://img.shields.io/badge/Docs-Wiki-10b981" alt="Docs" />
+  </a>
+</p>
+
+<p align="center">
+  <a href="https://docs.opensible.com/opensiblev1/introduction--philosophy">Introduction</a> ·
+  <a href="https://docs.opensible.com/opensiblev1/architecture-overview">Architecture</a> ·
+  <a href="https://docs.opensible.com/opensiblev1/installation-with-docker">Deploy with Compose</a> ·
+  <a href="https://docs.opensible.com/opensiblev1/5-first-login-and-admin">First Login &amp; Admin Setup</a> ·
+  <a href="https://docs.opensible.com/opensiblev1/3-community-and-support">Help</a>
+</p>
 
 ---
 
@@ -21,6 +56,8 @@ OpenSible is an open-source unified automation platform for cloud provisioning a
 Provision with OpenTofu, configure with Ansible, manage secrets securely, execute reusable deployment workflows, and automate your entire infrastructure lifecycle through GitOps - version-controlled, repeatable and secure across cloud, on-premises and hybrid environments.
 
 Whether you are a platform engineer, SRE, homelabber or MSP operator, OpenSible gives you a practical way to turn manual infrastructure work into repeatable, reviewable pipelines without surrendering your data to a SaaS vendor.
+
+![OpenSible Banner](https://cdn.opensible.com/banners/readme-banner.png)
 
 ---
 
