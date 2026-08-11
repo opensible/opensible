@@ -1,0 +1,22 @@
+# Gitleaks configuration for OpenSible
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "IaC blueprints, examples and placeholder credential files"
+targetRules = []
+paths = [
+  '''^IaC/''',
+  '''\.example$''',
+  '''\.example\.''',
+  '''(^|/)\.env\.example$''',
+  '''(^|/)vars\.example\.ya?ml$''',
+]
+
+[[allowlists]]
+description = "CI placeholder secrets and SSH key format constants"
+paths = [
+  '''^\.github/workflows/''',
+  '''^server/utils/ssh_keys\.py$''',
+]
