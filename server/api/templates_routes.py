@@ -26,7 +26,7 @@ from typing import Any, Dict, List, Optional
 
 from flask import Blueprint, jsonify, request
 
-from templates import list_templates, get_template, render_template
+from templates import TemplateValidationError, list_templates, get_template, render_template
 
 logger = logging.getLogger(__name__)
 bp = Blueprint("templates_api", __name__, url_prefix="/api/templates")
@@ -280,6 +280,8 @@ def render(template_id: str):
     targets = body.get("targets") or {}
     try:
         return jsonify(render_template(template_id, values, targets))
+    except TemplateValidationError as e:
+        return jsonify({"error": str(e), "field_errors": e.field_errors}), 400
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except Exception as e:
@@ -304,6 +306,8 @@ def save(template_id: str):
 
     try:
         result = render_template(template_id, values, targets)
+    except TemplateValidationError as e:
+        return jsonify({"error": str(e), "field_errors": e.field_errors}), 400
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
 

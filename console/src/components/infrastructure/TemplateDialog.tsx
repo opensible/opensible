@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { YamlEditor } from "@/components/ui/yaml-editor";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { TemplateInstanceHistoryDialog } from "./TemplateInstanceHistoryDialog";
 import { WorkerSelect } from "./WorkerSelect";
 
@@ -28,6 +28,50 @@ type TemplateDetail = {
 
 type GroupsResp = { groups?: Record<string, { hosts?: string[] }> };
 type NodeRow = { name: string; ip: string; ssh_user: string; ssh_port: string };
+type TemplateFieldErrors = Record<string, string[]>;
+
+function templateFieldErrors(error: unknown): TemplateFieldErrors {
+  if (!(error instanceof ApiError) || !error.body || typeof error.body !== "object" || Array.isArray(error.body)) {
+    return {};
+  }
+
+  const raw = (error.body as Record<string, unknown>).field_errors;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+
+  return Object.fromEntries(
+    Object.entries(raw).flatMap(([field, messages]) => {
+      const normalized = Array.isArray(messages)
+        ? messages.filter((message): message is string => typeof message === "string" && message.trim().length > 0)
+        : typeof messages === "string" && messages.trim() ? [messages] : [];
+      return normalized.length ? [[field, normalized]] : [];
+    }),
+  );
+}
+
+function TemplateValidationMessages({
+  name,
+  fieldErrors,
+}: {
+  name: string;
+  fieldErrors: TemplateFieldErrors;
+}) {
+  const messages = Object.entries(fieldErrors).flatMap(([field, errors]) => {
+    if (field === name) return errors;
+    if (field.startsWith(`${name}.`) || field.startsWith(`${name}[`)) {
+      return errors.map((error) => `${field}: ${error}`);
+    }
+    return [];
+  });
+  if (!messages.length) return null;
+
+  return (
+    <div role="alert" className="mt-1 space-y-0.5 text-[11px] text-[var(--color-destructive)]">
+      {messages.map((message, index) => (
+        <div key={`${message}-${index}`}>{message}</div>
+      ))}
+    </div>
+  );
+}
 
 export function TemplateDialog({
   templateId,
@@ -58,6 +102,7 @@ export function TemplateDialog({
   const [filename, setFilename] = useState<string>(initialFilename || "");
   const [busy, setBusy] = useState<null | "render" | "save" | "run">(null);
   const [workerId, setWorkerId] = useState<string>("");
+  const [fieldErrors, setFieldErrors] = useState<TemplateFieldErrors>({});
 
   const [runId, setRunId] = useState<string | null>(null);
   const [playbookFullscreen, setPlaybookFullscreen] = useState(false);
@@ -106,6 +151,20 @@ export function TemplateDialog({
 
   const targets = { groups, hosts };
 
+  const updateValue = (name: string, value: unknown) => {
+    setValues((current) => ({ ...current, [name]: value }));
+    setFieldErrors((current) => Object.fromEntries(
+      Object.entries(current).filter(([field]) => (
+        field !== name && !field.startsWith(`${name}.`) && !field.startsWith(`${name}[`)
+      )),
+    ));
+  };
+
+  const handleTemplateError = (error: unknown) => {
+    setFieldErrors(templateFieldErrors(error));
+    toast.error(error instanceof Error ? error.message : "Template request failed");
+  };
+
   const shouldRefreshRenderedYaml = (candidate: string) => templateId === "k8s-cluster" && (
     !candidate.includes("# OpenSible k8s template generation: 2026-07-cgroup-fix-v7") ||
     candidate.includes("Wait for first control-plane apiserver to be reachable") ||
@@ -131,7 +190,8 @@ export function TemplateDialog({
       );
       setYaml(res.yaml);
       setFilename((current) => current || res.filename);
-    } catch (e) { toast.error((e as Error).message); }
+      setFieldErrors({});
+    } catch (e) { handleTemplateError(e); }
     finally { setBusy(null); }
   };
 
@@ -160,8 +220,9 @@ export function TemplateDialog({
 
       const extra = res.written && res.written.length > 1 ? ` (+${res.written.length - 1} sidecar files)` : "";
       toast.success(`Saved ${res.filename}${extra}`);
+      setFieldErrors({});
       if (cicdEnabled) await syncCicdPipeline(res.filename, false);
-    } catch (e) { toast.error((e as Error).message); }
+    } catch (e) { handleTemplateError(e); }
     finally { setBusy(null); }
   };
 
@@ -240,7 +301,8 @@ export function TemplateDialog({
         toast.success("Run queued");
       }
       if (cicdEnabled) await syncCicdPipeline(saved.filename, false);
-    } catch (e) { toast.error((e as Error).message); }
+      setFieldErrors({});
+    } catch (e) { handleTemplateError(e); }
     finally { setBusy(null); }
   };
 
@@ -249,7 +311,7 @@ export function TemplateDialog({
     catch { toast.error("Copy failed"); }
   };
 
-  const updateNodes = (name: string, rows: NodeRow[]) => setValues({ ...values, [name]: rows });
+  const updateNodes = (name: string, rows: NodeRow[]) => updateValue(name, rows);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4" onClick={onClose}>
@@ -316,7 +378,7 @@ export function TemplateDialog({
                       <input
                         type="checkbox"
                         checked={!!values[v.name]}
-                        onChange={(e) => setValues({ ...values, [v.name]: e.target.checked })}
+                        onChange={(e) => updateValue(v.name, e.target.checked)}
                       />
                       Enable
                     </label>
@@ -325,7 +387,7 @@ export function TemplateDialog({
                   <div className="mt-1 border border-[var(--color-border)] rounded-md overflow-hidden">
                     <YamlEditor
                       value={String(values[v.name] ?? "")}
-                      onChange={(nv) => setValues({ ...values, [v.name]: nv })}
+                      onChange={(nv) => updateValue(v.name, nv)}
                       height={(v.rows || 8) * 20}
                     />
                   </div>
@@ -335,7 +397,7 @@ export function TemplateDialog({
                     className="mt-1"
                     value={String(values[v.name] ?? "")}
                     onChange={(e) =>
-                      setValues({ ...values, [v.name]: e.target.value ? Number(e.target.value) : "" })
+                      updateValue(v.name, e.target.value ? Number(e.target.value) : "")
                     }
                   />
                 ) : v.type === "nodes" ? (
@@ -353,9 +415,10 @@ export function TemplateDialog({
                     className="mt-1"
                     placeholder={v.placeholder}
                     value={String(values[v.name] ?? "")}
-                    onChange={(e) => setValues({ ...values, [v.name]: e.target.value })}
+                    onChange={(e) => updateValue(v.name, e.target.value)}
                   />
                 )}
+                <TemplateValidationMessages name={v.name} fieldErrors={fieldErrors} />
                 {v.help && (
                   <div className="text-[11px] text-[var(--color-muted-foreground)] mt-1">{v.help}</div>
                 )}
@@ -582,7 +645,10 @@ export function TemplateDialog({
           path={historyPath}
           onClose={() => setHistoryPath(null)}
           onRestore={(v, t) => {
-            if (v && typeof v === "object") setValues(v as Record<string, unknown>);
+            if (v && typeof v === "object") {
+              setValues(v as Record<string, unknown>);
+              setFieldErrors({});
+            }
             const tt = (t || {}) as { groups?: string[]; hosts?: string[] };
             if (Array.isArray(tt.groups)) setGroups(tt.groups);
             if (Array.isArray(tt.hosts)) setHosts(tt.hosts);
