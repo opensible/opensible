@@ -15,15 +15,25 @@ Renders:
 """
 from __future__ import annotations
 
+import ipaddress
+import re
+from collections.abc import Mapping
 from typing import Any, Dict, List
 
 from ._common import (  # noqa: F401
     slugify, yaml_str, render_hosts,
     VAULT_FILES_VARIABLE, parse_vault_files, vars_files_lines,
 )
+from .validation import TemplateValidationError
 
 
 K8S_TEMPLATE_GENERATION = "2026-07-metrics-tls-v10"
+
+_KUBERNETES_VERSION_RE = re.compile(r"^v?\d+\.\d+\.\d+$")
+_ENDPOINT_HOST_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?$")
+_ALLOWED_CNI = {"calico", "flannel", "none"}
+_ALLOWED_KUBE_PROXY_MODES = {"iptables", "ipvs", "none"}
+_ALLOWED_STORAGE = {"none", "longhorn", "local-path", "openebs-hostpath", "nfs-subdir"}
 
 
 TEMPLATE = {
@@ -150,6 +160,133 @@ def _norm_nodes(raw: Any, default_user: str, default_port: Any) -> List[Dict[str
     return out
 
 
+def _add_error(errors: Dict[str, List[str]], field: str, message: str) -> None:
+    errors.setdefault(field, []).append(message)
+
+
+def _string_value(values: Dict[str, Any], field: str, default: str) -> str:
+    raw = values.get(field)
+    return str(default if raw is None or raw == "" else raw).strip()
+
+
+def _validate_port(errors: Dict[str, List[str]], field: str, raw: Any) -> None:
+    if raw is None or raw == "":
+        return
+    if isinstance(raw, bool):
+        _add_error(errors, field, "must be an integer from 1 to 65535")
+        return
+    try:
+        port = int(raw)
+    except (TypeError, ValueError):
+        _add_error(errors, field, "must be an integer from 1 to 65535")
+        return
+    if not 1 <= port <= 65535:
+        _add_error(errors, field, "must be an integer from 1 to 65535")
+
+
+def _validate_nodes(errors: Dict[str, List[str]], values: Dict[str, Any]) -> None:
+    seen_addresses: Dict[str, str] = {}
+    seen_names: Dict[str, str] = {}
+    default_port = values.get("ssh_port_default", 22)
+    _validate_port(errors, "ssh_port_default", default_port)
+
+    for field, required in (("control_planes", True), ("workers", False)):
+        raw_nodes = values.get(field, [] if not required else None)
+        if not isinstance(raw_nodes, list):
+            _add_error(errors, field, "must be a list of node mappings")
+            continue
+        if required and not raw_nodes:
+            _add_error(errors, field, "must contain at least one node")
+        for index, raw_node in enumerate(raw_nodes):
+            item_field = f"{field}[{index}]"
+            if not isinstance(raw_node, Mapping):
+                _add_error(errors, item_field, "must be a node mapping")
+                continue
+            address = str(raw_node.get("ip") or "").strip()
+            if not address:
+                _add_error(errors, f"{item_field}.ip", "is required")
+            else:
+                address_key = address.lower()
+                if address_key in seen_addresses:
+                    _add_error(errors, f"{item_field}.ip", f"duplicates {seen_addresses[address_key]}")
+                else:
+                    seen_addresses[address_key] = f"{item_field}.ip"
+
+            _validate_port(errors, f"{item_field}.ssh_port", raw_node.get("ssh_port"))
+            name = str(raw_node.get("name") or f"node-{index + 1}").strip()
+            normalized_name = slugify(name, f"node-{index + 1}")[:63].strip("-") or f"node-{index + 1}"
+            if normalized_name in seen_names:
+                _add_error(errors, f"{item_field}.name", f"normalizes to duplicate Kubernetes node name {normalized_name!r}")
+            else:
+                seen_names[normalized_name] = f"{item_field}.name"
+
+
+def _validate_values(values: Dict[str, Any]) -> None:
+    """Raise structured errors before interpolating kubeadm configuration."""
+    if not isinstance(values, dict):
+        raise TemplateValidationError({"values": "must be an object"})
+
+    errors: Dict[str, List[str]] = {}
+    version = _string_value(values, "kubernetes_version", "1.30.4")
+    if not _KUBERNETES_VERSION_RE.fullmatch(version):
+        _add_error(errors, "kubernetes_version", "must be a full version such as 1.30.4")
+
+    networks: Dict[str, ipaddress.IPv4Network] = {}
+    for field, default in (("pod_cidr", "10.244.0.0/16"), ("service_cidr", "10.96.0.0/12")):
+        raw = _string_value(values, field, default)
+        try:
+            network = ipaddress.ip_network(raw, strict=True)
+        except ValueError:
+            _add_error(errors, field, "must be a strict IPv4 network CIDR")
+            continue
+        if not isinstance(network, ipaddress.IPv4Network):
+            _add_error(errors, field, "must be a strict IPv4 network CIDR")
+            continue
+        networks[field] = network
+    if len(networks) == 2 and networks["pod_cidr"].overlaps(networks["service_cidr"]):
+        _add_error(errors, "pod_cidr", "must not overlap service_cidr")
+        _add_error(errors, "service_cidr", "must not overlap pod_cidr")
+
+    cni = _string_value(values, "cni_plugin", "calico").lower()
+    if cni not in _ALLOWED_CNI:
+        _add_error(errors, "cni_plugin", "must be one of: calico, flannel, none")
+    elif cni == "flannel" and networks.get("pod_cidr") != ipaddress.IPv4Network("10.244.0.0/16"):
+        _add_error(errors, "pod_cidr", "must be 10.244.0.0/16 when cni_plugin is flannel")
+
+    kube_proxy_mode = _string_value(values, "kube_proxy_mode", "iptables").lower()
+    if kube_proxy_mode not in _ALLOWED_KUBE_PROXY_MODES:
+        _add_error(errors, "kube_proxy_mode", "must be one of: iptables, ipvs, none")
+    elif kube_proxy_mode == "none" and cni != "none":
+        _add_error(errors, "kube_proxy_mode", "none requires cni_plugin to be none")
+
+    runtime = _string_value(values, "container_runtime", "containerd").lower()
+    if runtime != "containerd":
+        _add_error(errors, "container_runtime", "must be containerd")
+
+    storage = _string_value(values, "storage_provisioner", "none").lower()
+    if storage not in _ALLOWED_STORAGE:
+        _add_error(errors, "storage_provisioner", "must be one of: none, longhorn, local-path, openebs-hostpath, nfs-subdir")
+    elif storage == "nfs-subdir":
+        if not _string_value(values, "nfs_server", ""):
+            _add_error(errors, "nfs_server", "is required when storage_provisioner is nfs-subdir")
+        raw_nfs_path = values.get("nfs_path")
+        nfs_path = "/srv/nfs/k8s" if raw_nfs_path is None else str(raw_nfs_path).strip()
+        if not nfs_path.startswith("/"):
+            _add_error(errors, "nfs_path", "must be an absolute path when storage_provisioner is nfs-subdir")
+
+    endpoint = _string_value(values, "control_plane_endpoint", "")
+    if endpoint:
+        host, separator, port_text = endpoint.rpartition(":")
+        if not separator or not _ENDPOINT_HOST_RE.fullmatch(host) or ":" in host:
+            _add_error(errors, "control_plane_endpoint", "must use host:port syntax")
+        else:
+            _validate_port(errors, "control_plane_endpoint", port_text)
+
+    _validate_nodes(errors, values)
+    if errors:
+        raise TemplateValidationError(errors)
+
+
 def _inventory_yaml(cluster: str, cps: List[Dict[str, Any]], workers: List[Dict[str, Any]]) -> str:
     cp_group = f"{cluster}_control_plane"
     wk_group = f"{cluster}_workers"
@@ -181,6 +318,7 @@ def _inventory_yaml(cluster: str, cps: List[Dict[str, Any]], workers: List[Dict[
 
 
 def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
+    _validate_values(values)
     cluster = slugify(values.get("cluster_name") or "cluster", "cluster")
     cp_group = f"{cluster}_control_plane"
     wk_group = f"{cluster}_workers"
@@ -192,9 +330,9 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     become = "true" if values.get("become", True) else "false"
     ha_mode = bool(values.get("ha_mode"))
     cp_endpoint = str(values.get("control_plane_endpoint") or "").strip()
-    pod_cidr = values.get("pod_cidr") or "10.244.0.0/16"
-    service_cidr = values.get("service_cidr") or "10.96.0.0/12"
-    cni = (values.get("cni_plugin") or "calico").lower()
+    pod_cidr = _string_value(values, "pod_cidr", "10.244.0.0/16")
+    service_cidr = _string_value(values, "service_cidr", "10.96.0.0/12")
+    cni = _string_value(values, "cni_plugin", "calico").lower()
     reset_existing = bool(values.get("reset_existing_cluster", False))
     install_metrics = bool(values.get("install_metrics_server", True))
     storage = str(values.get("storage_provisioner") or "none").lower().strip()
@@ -208,19 +346,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     nfs_path = str(values.get("nfs_path") or "/srv/nfs/k8s").strip()
     allow_cp_sched = bool(values.get("allow_scheduling_on_control_plane", False))
     fetch_kubeconfig = bool(values.get("fetch_kubeconfig", True))
-    kube_proxy_mode = str(values.get("kube_proxy_mode") or "iptables").lower().strip()
-    if kube_proxy_mode not in ("iptables", "ipvs", "none"):
-        kube_proxy_mode = "iptables"
-    requested_kube_proxy_mode = kube_proxy_mode
-    # Calico/Flannel do not replace Kubernetes Service routing by default. If
-    # kube-proxy is skipped, calico-node's install-cni init container commonly
-    # cannot reach the apiserver Service (10.96.0.1), leaving every node
-    # NotReady with "CNI plugin not initialized". Treat "none" as IPVS for
-    # built-in Calico/Flannel so users can avoid iptables mode without breaking
-    # the cluster. True kube-proxy-less mode remains available with CNI=None for
-    # users who install Cilium/Calico eBPF manually.
-    if kube_proxy_mode == "none" and cni in ("calico", "flannel"):
-        kube_proxy_mode = "ipvs"
+    kube_proxy_mode = _string_value(values, "kube_proxy_mode", "iptables").lower()
 
     cps = _norm_nodes(values.get("control_planes"),
                       values.get("ssh_user_default") or "root",
@@ -237,10 +363,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     parts.append(f"# OpenSible k8s template generation: {K8S_TEMPLATE_GENERATION}")
     parts.append(f"# Cluster: {cluster} (HA={ha_mode}, control-plane={len(cps)}, workers={len(workers)})")
     parts.append(f"# Kubernetes: v{version} | CNI: {cni} | Pod CIDR: {pod_cidr}")
-    if requested_kube_proxy_mode != kube_proxy_mode:
-        parts.append(f"# kube-proxy: requested {requested_kube_proxy_mode}, using {kube_proxy_mode} because {cni} does not replace Service routing by default")
-    else:
-        parts.append(f"# kube-proxy: {kube_proxy_mode}")
+    parts.append(f"# kube-proxy: {kube_proxy_mode}")
     parts.append(f"# Inventory sidecar: inventories/{cluster}.yml")
     parts.append("")
 
@@ -294,6 +417,15 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     cp_api_endpoints.extend(f"{n['ip']}:6443" for n in cps)
     cp_api_endpoints = list(dict.fromkeys(e for e in cp_api_endpoints if e and not e.startswith(":")))
 
+    def _play_env_lines() -> List[str]:
+        # kubectl/kubeadm/helm live in /usr/bin or /usr/local/bin, but the
+        # non-interactive SSH env can ship a minimal PATH, which makes
+        # ansible.builtin.command fail with "No such file or directory: kubectl".
+        return [
+            "  environment:",
+            "    PATH: \"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\"",
+        ]
+
     def _cp_api_endpoint_vars(indent: str = "    ") -> List[str]:
         lines = [f"{indent}cp_api_endpoints:"]
         for endpoint in cp_api_endpoints:
@@ -306,6 +438,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     parts.append(f"  become: {become}")
     parts.append("  gather_facts: false")
     parts.extend(vf_lines)
+    parts.extend(_play_env_lines())
     parts.append("  vars:")
     parts.extend(_conn_vars_lines(all_nodes))
     parts.append("  tasks:")
@@ -625,6 +758,18 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     parts.append("        state: present")
     parts.append("        update_cache: true")
     parts.append("      when: ansible_os_family == 'Debian'")
+    parts.append("    - name: Check installed Kubernetes binaries")
+    parts.append("      ansible.builtin.stat:")
+    parts.append("        path: '/usr/bin/{{ item }}'")
+    parts.append("      loop: [kubeadm, kubelet, kubectl]")
+    parts.append("      register: kube_binary_files")
+    parts.append("      when: ansible_os_family == 'Debian'")
+    parts.append("    - name: Repair Kubernetes packages when installed binaries are missing")
+    parts.append("      ansible.builtin.shell: >-")
+    parts.append(f"        apt-get install --reinstall --allow-change-held-packages -y kubeadm={version}-* kubelet={version}-* kubectl={version}-*")
+    parts.append("      when:")
+    parts.append("        - ansible_os_family == 'Debian'")
+    parts.append("        - kube_binary_files.results | selectattr('stat.exists', 'equalto', false) | list | length > 0")
     parts.append("    - name: Install kubeadm/kubelet/kubectl (RHEL family)")
     parts.append("      ansible.builtin.package:")
     parts.append("        name: [kubeadm, kubelet, kubectl]")
@@ -636,6 +781,17 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     parts.append("        selection: hold")
     parts.append("      loop: [kubeadm, kubelet, kubectl]")
     parts.append("      when: ansible_os_family == 'Debian'")
+    parts.append("    - name: Verify Kubernetes binaries are installed")
+    parts.append("      ansible.builtin.shell: |")
+    parts.append("        set -e")
+    parts.append("        export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+    parts.append("        for bin in kubeadm kubelet kubectl; do")
+    parts.append("          if ! command -v \"$bin\" >/dev/null 2>&1; then")
+    parts.append("            echo \"$bin is not installed or not executable on this node\" >&2")
+    parts.append("            exit 1")
+    parts.append("          fi")
+    parts.append("        done")
+    parts.append("      changed_when: false")
     parts.append("    - name: Pin kubelet node IP")
     parts.append("      ansible.builtin.copy:")
     parts.append("        dest: /etc/default/kubelet")
@@ -680,6 +836,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     parts.append(f"  become: {become}")
     parts.append("  gather_facts: true")
     parts.extend(vf_lines)
+    parts.extend(_play_env_lines())
     parts.append("  vars:")
     parts.extend(_conn_vars_lines(cps[:1]))
     parts.extend(_cp_api_endpoint_vars())
@@ -704,7 +861,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     parts.append("        replace: '    server: https://{{ inventory_hostname }}:6443'")
     parts.append("      when: admin_conf.stat.exists")
     parts.append("    - name: Check existing control-plane API health")
-    parts.append("      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz")
+    parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz")
     parts.append("      register: existing_api_ready")
     parts.append("      failed_when: false")
     parts.append("      changed_when: false")
@@ -730,8 +887,8 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     if kube_proxy_mode == "none":
         init_cmd_parts.append("--skip-phases=addon/kube-proxy")
     parts.append("    - name: kubeadm init")
-    parts.append("      ansible.builtin.command: >-")
-    parts.append("        " + " ".join(init_cmd_parts))
+    parts.append("      ansible.builtin.shell: >-")
+    parts.append("        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin " + " ".join(init_cmd_parts))
     parts.append("      when: not admin_conf.stat.exists")
     parts.append("      register: kubeadm_init")
     parts.append("    - name: Copy admin.conf for root kubectl")
@@ -752,7 +909,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     parts.append("        regexp: '^\\s*server:\\s+https://.*:6443\\s*$'")
     parts.append("        replace: '    server: https://{{ inventory_hostname }}:6443'")
     parts.append("    - name: Wait for Kubernetes API to become ready")
-    parts.append("      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz")
+    parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz")
     parts.append("      register: api_ready")
     parts.append("      retries: 60")
     parts.append("      delay: 5")
@@ -779,12 +936,12 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     parts.append("      args: {executable: /bin/bash}")
     parts.append("      changed_when: true")
     parts.append("    - name: Generate worker join command")
-    parts.append("      ansible.builtin.command: kubeadm token create --kubeconfig=/root/.kube/bootstrap-local.conf --print-join-command")
+    parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubeadm token create --kubeconfig=/root/.kube/bootstrap-local.conf --print-join-command")
     parts.append("      register: worker_join_cmd")
     parts.append("      changed_when: false")
     if ha_mode:
         parts.append("    - name: Upload certs and get certificate key")
-        parts.append("      ansible.builtin.command: kubeadm init phase upload-certs --upload-certs --kubeconfig=/root/.kube/bootstrap-local.conf")
+        parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubeadm init phase upload-certs --upload-certs --kubeconfig=/root/.kube/bootstrap-local.conf")
         parts.append("      register: cert_key_out")
         parts.append("      changed_when: false")
         parts.append("    - name: Extract certificate key")
@@ -798,7 +955,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     parts.append("        kubeadm_worker_join: \"{{ worker_join_cmd.stdout | trim }}\"")
     parts.append("        first_cp_admin_conf_b64_content: \"{{ first_cp_admin_conf_b64.content }}\"")
     parts.append("    - name: Verify Kubernetes API is ready for node joins")
-    parts.append("      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz")
+    parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz")
     parts.append("      register: api_ready_for_joins")
     parts.append("      retries: 60")
     parts.append("      delay: 5")
@@ -814,6 +971,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
         parts.append("  serial: 1")
         parts.append("  gather_facts: false")
         parts.extend(vf_lines)
+        parts.extend(_play_env_lines())
         parts.append("  vars:")
         # Include first CP in the connection maps so delegate_to picks up its user/port.
         parts.extend(_conn_vars_lines(cps[:1] + cps[1:]))
@@ -930,7 +1088,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
         parts.append("        regexp: '^\\s*server:\\s+https://.*:6443\\s*$'")
         parts.append("        replace: '    server: https://{{ inventory_hostname }}:6443'")
         parts.append("    - name: Wait for joined control-plane API to become ready")
-        parts.append("      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz")
+        parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz")
         parts.append("      register: joined_cp_api_ready")
         parts.append("      retries: 60")
         parts.append("      delay: 5")
@@ -946,6 +1104,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
         parts.append(f"  become: {become}")
         parts.append("  gather_facts: false")
         parts.extend(vf_lines)
+        parts.extend(_play_env_lines())
         parts.append("  vars:")
         # Include first CP in the connection maps so delegate_to picks up its user/port.
         parts.extend(_conn_vars_lines(cps[:1] + workers))
@@ -1010,6 +1169,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
         parts.append(f"  become: {become}")
         parts.append("  gather_facts: false")
         parts.extend(vf_lines)
+        parts.extend(_play_env_lines())
         parts.append("  vars:")
         parts.extend(_conn_vars_lines(cps[:1]))
         parts.extend(_cp_api_endpoint_vars())
@@ -1027,7 +1187,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
         parts.append("        regexp: '^\\s*server:\\s+https://.*:6443\\s*$'")
         parts.append("        replace: '    server: https://{{ inventory_hostname }}:6443'")
         parts.append("    - name: Verify Kubernetes API before post-install add-ons")
-        parts.append("      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz")
+        parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz")
         parts.append("      register: api_ready_before_addons")
         parts.append("      retries: 60")
         parts.append("      delay: 5")
@@ -1087,20 +1247,20 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
             parts.append("      changed_when: \"'created' in cni_apply.stdout or 'configured' in cni_apply.stdout\"")
         elif cni == "flannel":
             parts.append("    - name: Install Flannel CNI")
-            parts.append("      ansible.builtin.command: kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml")
+            parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl apply -f https://github.com/flannel-io/flannel/releases/latest/download/kube-flannel.yml")
             parts.append("      environment: {KUBECONFIG: /root/.kube/bootstrap-local.conf}")
             parts.append("      register: cni_apply")
             parts.append("      changed_when: \"'created' in cni_apply.stdout or 'configured' in cni_apply.stdout\"")
         if allow_cp_sched:
             parts.append("    - name: Untaint control-plane nodes (allow scheduling)")
-            parts.append("      ansible.builtin.command: kubectl taint nodes --all node-role.kubernetes.io/control-plane- --overwrite=true")
+            parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl taint nodes --all node-role.kubernetes.io/control-plane- --overwrite=true")
             parts.append("      environment: {KUBECONFIG: /root/.kube/bootstrap-local.conf}")
             parts.append("      register: untaint")
             parts.append("      failed_when: untaint.rc != 0 and 'not found' not in untaint.stderr")
             parts.append("      changed_when: \"'untainted' in untaint.stdout\"")
         if cni in ("calico", "flannel"):
             parts.append("    - name: Verify Kubernetes API remains healthy after CNI")
-            parts.append("      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz")
+            parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz")
             parts.append("      register: api_ready_after_cni")
             parts.append("      retries: 60")
             parts.append("      delay: 5")
@@ -1109,7 +1269,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
 
         if install_metrics:
             parts.append("    - name: Apply metrics-server manifest")
-            parts.append("      ansible.builtin.command: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml")
+            parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml")
             parts.append("      environment: {KUBECONFIG: /root/.kube/bootstrap-local.conf}")
             parts.append("      register: metrics_apply")
             parts.append("      changed_when: \"'created' in metrics_apply.stdout or 'configured' in metrics_apply.stdout\"")
@@ -1153,22 +1313,22 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
             parts.append("        fi")
             parts.append("      args: {creates: /usr/local/bin/helm}")
             parts.append("    - name: Add Longhorn helm repo")
-            parts.append("      ansible.builtin.command: helm repo add longhorn https://charts.longhorn.io")
+            parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin helm repo add longhorn https://charts.longhorn.io")
             parts.append("      register: helm_add")
             parts.append("      changed_when: \"'has been added' in helm_add.stdout\"")
             parts.append("      failed_when: helm_add.rc != 0 and 'already exists' not in helm_add.stderr")
             parts.append("    - name: Update helm repos")
-            parts.append("      ansible.builtin.command: helm repo update")
+            parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin helm repo update")
             parts.append("      changed_when: false")
             parts.append("    - name: Create longhorn-system namespace")
-            parts.append("      ansible.builtin.command: kubectl create namespace longhorn-system")
+            parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl create namespace longhorn-system")
             parts.append("      environment: {KUBECONFIG: /root/.kube/bootstrap-local.conf}")
             parts.append("      register: ns_create")
             parts.append("      changed_when: \"'created' in ns_create.stdout\"")
             parts.append("      failed_when: ns_create.rc != 0 and 'AlreadyExists' not in ns_create.stderr")
             parts.append("    - name: Install / upgrade Longhorn")
-            parts.append("      ansible.builtin.command: >-")
-            parts.append(f"        helm upgrade --install longhorn longhorn/longhorn --namespace longhorn-system")
+            parts.append("      ansible.builtin.shell: >-")
+            parts.append(f"        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin helm upgrade --install longhorn longhorn/longhorn --namespace longhorn-system")
             if longhorn_version:
                 parts.append(f"        --version {longhorn_version}")
             parts.append(f"        --set persistence.defaultClassReplicaCount={longhorn_replicas}")
@@ -1177,14 +1337,14 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
         elif storage == "local-path":
             sc_name = "local-path"
             parts.append("    - name: Install Rancher local-path-provisioner")
-            parts.append("      ansible.builtin.command: kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml")
+            parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl apply -f https://raw.githubusercontent.com/rancher/local-path-provisioner/master/deploy/local-path-storage.yaml")
             parts.append("      environment: {KUBECONFIG: /root/.kube/bootstrap-local.conf}")
             parts.append("      register: lp_apply")
             parts.append("      changed_when: \"'created' in lp_apply.stdout or 'configured' in lp_apply.stdout\"")
         elif storage == "openebs-hostpath":
             sc_name = "openebs-hostpath"
             parts.append("    - name: Install OpenEBS (hostpath)")
-            parts.append("      ansible.builtin.command: kubectl apply -f https://openebs.github.io/charts/openebs-operator.yaml")
+            parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl apply -f https://openebs.github.io/charts/openebs-operator.yaml")
             parts.append("      environment: {KUBECONFIG: /root/.kube/bootstrap-local.conf}")
             parts.append("      register: oeb_apply")
             parts.append("      changed_when: \"'created' in oeb_apply.stdout or 'configured' in oeb_apply.stdout\"")
@@ -1198,16 +1358,16 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
             parts.append("        fi")
             parts.append("      args: {creates: /usr/local/bin/helm}")
             parts.append("    - name: Add nfs-subdir helm repo")
-            parts.append("      ansible.builtin.command: helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/")
+            parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin helm repo add nfs-subdir-external-provisioner https://kubernetes-sigs.github.io/nfs-subdir-external-provisioner/")
             parts.append("      register: helm_add_nfs")
             parts.append("      changed_when: \"'has been added' in helm_add_nfs.stdout\"")
             parts.append("      failed_when: helm_add_nfs.rc != 0 and 'already exists' not in helm_add_nfs.stderr")
             parts.append("    - name: Update helm repos")
-            parts.append("      ansible.builtin.command: helm repo update")
+            parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin helm repo update")
             parts.append("      changed_when: false")
             parts.append("    - name: Install / upgrade nfs-subdir-external-provisioner")
-            parts.append("      ansible.builtin.command: >-")
-            parts.append("        helm upgrade --install nfs-subdir nfs-subdir-external-provisioner/nfs-subdir-external-provisioner")
+            parts.append("      ansible.builtin.shell: >-")
+            parts.append("        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin helm upgrade --install nfs-subdir nfs-subdir-external-provisioner/nfs-subdir-external-provisioner")
             parts.append("        --namespace kube-system")
             parts.append(f"        --set nfs.server={yaml_str(nfs_server)}")
             parts.append(f"        --set nfs.path={yaml_str(nfs_path)}")
@@ -1216,8 +1376,8 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
 
         if sc_name and storage_default:
             parts.append(f"    - name: Wait for StorageClass '{sc_name}' to be registered")
-            parts.append("      ansible.builtin.command: >-")
-            parts.append(f"        kubectl get storageclass {sc_name}")
+            parts.append("      ansible.builtin.shell: >-")
+            parts.append(f"        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl get storageclass {sc_name}")
             parts.append("      environment: {KUBECONFIG: /root/.kube/bootstrap-local.conf}")
             parts.append("      register: sc_check")
             parts.append("      retries: 30")
@@ -1235,22 +1395,22 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
             parts.append("      environment: {KUBECONFIG: /root/.kube/bootstrap-local.conf}")
             parts.append("      changed_when: false")
             parts.append(f"    - name: Mark '{sc_name}' as default StorageClass")
-            parts.append("      ansible.builtin.command: >-")
-            parts.append(f"        kubectl patch storageclass {sc_name}")
+            parts.append("      ansible.builtin.shell: >-")
+            parts.append(f"        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl patch storageclass {sc_name}")
             parts.append("        -p '{\"metadata\":{\"annotations\":{\"storageclass.kubernetes.io/is-default-class\":\"true\"}}}'")
             parts.append("      environment: {KUBECONFIG: /root/.kube/bootstrap-local.conf}")
             parts.append("      register: sc_default")
             parts.append("      changed_when: \"'patched' in sc_default.stdout\"")
 
         parts.append("    - name: Verify Kubernetes API remains healthy after add-ons")
-        parts.append("      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz")
+        parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz")
         parts.append("      register: api_ready_after_addons")
         parts.append("      retries: 60")
         parts.append("      delay: 5")
         parts.append("      until: api_ready_after_addons.rc == 0")
         parts.append("      changed_when: false")
         parts.append("    - name: Wait for all Kubernetes nodes to become Ready")
-        parts.append("      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf wait --for=condition=Ready nodes --all --timeout=300s")
+        parts.append("      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl --kubeconfig=/root/.kube/bootstrap-local.conf wait --for=condition=Ready nodes --all --timeout=300s")
         parts.append("      register: nodes_ready")
         parts.append("      failed_when: false")
         parts.append("      changed_when: false")

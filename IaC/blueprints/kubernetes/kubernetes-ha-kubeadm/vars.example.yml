@@ -3,19 +3,26 @@ cluster_name: opensible
 ha_mode: false
 # Set to your load-balancer VIP or DNS when ha_mode is true.
 control_plane_endpoint: ""
-kubernetes_version: "1.30"
+# A full patch version is required; an optional leading "v" is accepted.
+kubernetes_version: "1.30.4"
 
+# IPv4 single-stack only. Pod and service CIDRs must not overlap.
 pod_cidr: 10.244.0.0/16
 service_cidr: 10.96.0.0/12
-cni_plugin: calico          # calico | flannel | cilium
+# Flannel requires pod_cidr 10.244.0.0/16; "none" means install a CNI manually.
+cni_plugin: calico          # calico | flannel | none
 container_runtime: containerd
+# "none" is only valid with cni_plugin: none.
 kube_proxy_mode: iptables
 
 install_metrics_server: true
-storage_provisioner: local-path   # local-path | longhorn | nfs | none
+storage_provisioner: none   # none | longhorn | local-path | openebs-hostpath | nfs-subdir
 storage_default_class: true
+# Required when storage_provisioner is nfs-subdir.
+nfs_server: ""
+nfs_path: /srv/nfs/k8s
 
-reset_existing_cluster: true
+reset_existing_cluster: false
 allow_scheduling_on_control_plane: false
 fetch_kubeconfig: true
 
