@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ArrowLeft, CheckCircle2, Download, Search, Rocket, Bomb, RefreshCcw, RefreshCw, Clock,
   GitBranch, GitPullRequestArrow, Edit, Trash2, KeyRound, AlertTriangle, Boxes, Github, Radar, Settings, X,
-  MoreHorizontal,
+  MoreHorizontal, ChevronLeft, ChevronRight,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -168,6 +168,12 @@ function StackDetail() {
     refetchInterval: 4000,
   });
   const stackRuns = (runsQ.data?.runs || []).filter((r) => r.stack === stackId);
+
+  const RUNS_PAGE_SIZE = 15;
+  const [runsPage, setRunsPage] = useState(0);
+  const runsPageCount = Math.max(1, Math.ceil(stackRuns.length / RUNS_PAGE_SIZE));
+  const currentRunsPage = Math.min(runsPage, runsPageCount - 1);
+  const pagedRuns = stackRuns.slice(currentRunsPage * RUNS_PAGE_SIZE, currentRunsPage * RUNS_PAGE_SIZE + RUNS_PAGE_SIZE);
 
   const hydratedRef = useRef(false);
   const latestRun = stackRuns[0];
@@ -639,7 +645,7 @@ function StackDetail() {
                   </tr>
                 </thead>
                 <tbody>
-                  {stackRuns.map((r) => {
+                  {pagedRuns.map((r) => {
                     const startedSec = r.started_at ? Number(r.started_at) : undefined;
                     const finishedSec = r.finished_at ? Number(r.finished_at) : undefined;
                     const snapshot = versionByRun.get(String(r.run_id));
@@ -684,6 +690,21 @@ function StackDetail() {
                   })}
                 </tbody>
               </table>
+              {runsPageCount > 1 && (
+                <div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-[var(--color-border)] text-xs">
+                  <span className="text-[var(--color-muted-foreground)]">
+                    Page {currentRunsPage + 1} of {runsPageCount} · {stackRuns.length} runs
+                  </span>
+                  <Button variant="outline" size="sm" className="h-6 px-2"
+                    onClick={() => setRunsPage((p) => Math.max(0, p - 1))} disabled={currentRunsPage === 0}>
+                    <ChevronLeft className="h-3 w-3" />
+                  </Button>
+                  <Button variant="outline" size="sm" className="h-6 px-2"
+                    onClick={() => setRunsPage((p) => Math.min(runsPageCount - 1, p + 1))} disabled={currentRunsPage >= runsPageCount - 1}>
+                    <ChevronRight className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </CardContent>
