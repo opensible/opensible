@@ -693,8 +693,9 @@ function StackDetail() {
               {runsPageCount > 1 && (
                 <div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-[var(--color-border)] text-xs">
                   <span className="text-[var(--color-muted-foreground)]">
-                    Page {currentRunsPage + 1} of {runsPageCount} · {stackRuns.length} runs
+                    Showing {currentRunsPage * RUNS_PAGE_SIZE + 1}–{Math.min(stackRuns.length, (currentRunsPage + 1) * RUNS_PAGE_SIZE)} of {stackRuns.length} runs
                   </span>
+
                   <Button variant="outline" size="sm" className="h-6 px-2"
                     onClick={() => setRunsPage((p) => Math.max(0, p - 1))} disabled={currentRunsPage === 0}>
                     <ChevronLeft className="h-3 w-3" />
