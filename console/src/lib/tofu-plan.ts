@@ -1,3 +1,11 @@
+/**
+ * Parser for `tofu plan` / `tofu apply` / `tofu plan -refresh-only` output
+ * (produced with -no-color) into a structured diff for the Plan diff UI.
+ *
+ * Purely presentational: the raw log stays the source of truth, this just
+ * gives the UI a created/changed/destroyed breakdown to render.
+ */
+
 export type PlanChangeAction =
   | "create"
   | "update"
@@ -48,16 +56,42 @@ export type PolicyReport = {
   violations: PolicyViolation[];
 };
 
+export type CostLine = {
+  action: "create" | "update" | "replace" | "delete";
+  address: string;
+  kind: string;
+  /** monthly delta in the report currency */
+  delta: number;
+};
+
+export type CostReport = {
+  provider: string;
+  currency: string;
+  monthlyCurrent: number;
+  monthlyPlanned: number;
+  monthlyDelta: number;
+  yearlyDelta: number;
+  priced: number;
+  unpriced: number;
+  lines: CostLine[];
+};
+
 export type ParsedPlan = {
   resources: PlanResource[];
   summary: PlanSummary | null;
   outputs: PlanAttrChange[];
+  /** true when the run log reports drift against the recorded state */
   driftDetected: boolean;
+  /** Policy-as-code gate verdict parsed from the `[policy]` log block */
   policy: PolicyReport | null;
+  /** Cost estimate parsed from the `[cost]` log block */
+  cost: CostReport | null;
+  /** true when a drift run explicitly reported no drift */
   noDrift: boolean;
   /** Whether anything plan-like was found at all. */
   hasPlan: boolean;
 };
+
 
 const RESOURCE_HEADER =
   /^\s*#\s+(.+?)\s+(will be created|will be destroyed|will be updated in-place|must be replaced|will be replaced|will be read during apply|has been deleted|has changed|will no longer be managed|has been removed)/;
@@ -146,12 +180,48 @@ export function parsePolicyReport(log: string): PolicyReport | null {
   };
 }
 
+/** Parse the `[cost]` block emitted by the worker's cost estimator. */
+export function parseCostReport(log: string): CostReport | null {
+  if (!log || !/\[cost\]/.test(log)) return null;
+  const head =
+    /\[cost\]\s*summary\s+currency=(\S+)\s+current=([-\d.]+)\s+projected=([-\d.]+)\s+delta=([-\d.]+)\s+yearly_delta=([-\d.]+)\s+priced=(\d+)\s+unpriced=(\d+)\s+provider=(\S+)/.exec(
+      log,
+    );
+  if (!head) return null;
+
+  const lines: CostLine[] = [];
+  const re = /\[cost\]\s+([+\-±~])\s+(\S+)\s+(\S+)\s+([+-]?[\d.]+)\/mo\s*$/gm;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(log))) {
+    const sym = m[1] ?? "~";
+    lines.push({
+      action: sym === "+" ? "create" : sym === "-" ? "delete" : sym === "±" ? "replace" : "update",
+      address: m[2] ?? "",
+      kind: m[3] ?? "",
+      delta: Number(m[4] ?? 0),
+    });
+  }
+
+  return {
+    provider: head[8] ?? "unknown",
+    currency: head[1] ?? "USD",
+    monthlyCurrent: Number(head[2] ?? 0),
+    monthlyPlanned: Number(head[3] ?? 0),
+    monthlyDelta: Number(head[4] ?? 0),
+    yearlyDelta: Number(head[5] ?? 0),
+    priced: Number(head[6] ?? 0),
+    unpriced: Number(head[7] ?? 0),
+    lines,
+  };
+}
+
 export function parseTofuPlan(log: string): ParsedPlan {
   const empty: ParsedPlan = {
     resources: [], summary: null, outputs: [], driftDetected: false, noDrift: false,
-    policy: null, hasPlan: false,
+    policy: null, cost: null, hasPlan: false,
   };
   if (!log) return empty;
+
 
   const lines = log.split("\n");
   const resources: PlanResource[] = [];
@@ -228,6 +298,7 @@ export function parseTofuPlan(log: string): ParsedPlan {
     resources.some((r) => r.action === "drift");
   const noDrift = !driftDetected && /\[drift\]\s*no drift/i.test(log);
   const policy = parsePolicyReport(log);
+  const cost = parseCostReport(log);
 
   return {
     resources,
@@ -236,10 +307,12 @@ export function parseTofuPlan(log: string): ParsedPlan {
     driftDetected,
     noDrift,
     policy,
+    cost,
     hasPlan:
       resources.length > 0 || summary !== null || outputs.length > 0 || driftDetected || noDrift ||
-      policy !== null,
+      policy !== null || cost !== null,
   };
+
 }
 
 export const ACTION_META: Record<

@@ -1,8 +1,9 @@
 import { useMemo, useState } from "react";
-import { ChevronRight, FilePlus2, FileMinus2, FileDiff, RefreshCcwDot, Eye, CheckCircle2, ShieldCheck, ShieldAlert, ShieldX } from "lucide-react";
+import { ChevronRight, FilePlus2, FileMinus2, FileDiff, RefreshCcwDot, Eye, CheckCircle2, ShieldCheck, ShieldAlert, ShieldX, Wallet } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { parseTofuPlan, ACTION_META, type PlanChangeAction, type PlanResource, type PolicyReport } from "@/lib/tofu-plan";
+import { parseTofuPlan, ACTION_META, type PlanChangeAction, type PlanResource, type PolicyReport, type CostReport } from "@/lib/tofu-plan";
+
 import { cn } from "@/lib/utils";
 
 const TONE_CLASS: Record<string, string> = {
@@ -149,6 +150,77 @@ function PolicySection({ policy }: { policy: PolicyReport }) {
   );
 }
 
+function money(currency: string, value: number, signed = false) {
+  const sym = currency === "USD" ? "$" : "";
+  const abs = Math.abs(value).toFixed(2);
+  const sign = signed ? (value > 0 ? "+" : value < 0 ? "−" : "") : value < 0 ? "−" : "";
+  return `${sign}${sym}${abs}${sym ? "" : ` ${currency}`}`;
+}
+
+function CostSection({ cost }: { cost: CostReport }) {
+  const [open, setOpen] = useState(false);
+  const tone =
+    cost.monthlyDelta > 0 ? TONE_CLASS.destroy : cost.monthlyDelta < 0 ? TONE_CLASS.create : TONE_CLASS.neutral;
+  return (
+    <div className="rounded-md border border-[var(--color-border)]">
+      <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-[var(--color-border)]">
+        <Wallet className={cn("h-4 w-4", tone)} />
+        <span className="text-xs font-medium">Cost estimate</span>
+        <span className={cn("text-sm font-semibold tabular-nums", tone)}>
+          {money(cost.currency, cost.monthlyDelta, true)}/mo
+        </span>
+        <Badge variant="default" className="text-[10px]">{cost.provider}</Badge>
+        <span className="ml-auto text-[11px] text-[var(--color-muted-foreground)] tabular-nums">
+          {money(cost.currency, cost.monthlyCurrent)} → {money(cost.currency, cost.monthlyPlanned)} /mo
+          {cost.monthlyDelta !== 0 && <> · {money(cost.currency, cost.yearlyDelta, true)}/yr</>}
+        </span>
+      </div>
+
+      {cost.lines.length > 0 ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setOpen((o) => !o)}
+            className="flex w-full items-center gap-1.5 px-3 py-2 text-[11px] text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"
+          >
+            <ChevronRight className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-90")} />
+            {cost.priced} priced resource change{cost.priced === 1 ? "" : "s"}
+            {cost.unpriced > 0 && ` · ${cost.unpriced} not billable / unknown`}
+          </button>
+          {open && (
+            <div className="divide-y divide-[var(--color-border)] border-t border-[var(--color-border)]">
+              {cost.lines.map((l, i) => (
+                <div key={`${l.address}-${i}`} className="flex flex-wrap items-center gap-2 px-3 py-1.5">
+                  <span className="font-mono text-[11px] truncate flex-1 min-w-0">{l.address}</span>
+                  <span className="text-[10px] uppercase tracking-wide text-[var(--color-muted-foreground)]">
+                    {l.kind}
+                  </span>
+                  <span
+                    className={cn(
+                      "font-mono text-[11px] tabular-nums w-24 text-right",
+                      l.delta > 0 ? TONE_CLASS.destroy : l.delta < 0 ? TONE_CLASS.create : TONE_CLASS.neutral,
+                    )}
+                  >
+                    {money(cost.currency, l.delta, true)}/mo
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <p className="px-3 py-2 text-[11px] text-[var(--color-muted-foreground)]">
+          No billable resource changes detected in this plan.
+        </p>
+      )}
+      <p className="px-3 pb-2 text-[10px] text-[var(--color-muted-foreground)]">
+        Estimate only — catalog list prices, excluding taxes, commitments and discounts.
+      </p>
+    </div>
+  );
+}
+
+
 export function PlanDiff({
   log,
   action,
@@ -198,6 +270,8 @@ export function PlanDiff({
         </div>
       </CardHeader>
       <CardContent className="space-y-3">
+        {parsed.cost && <CostSection cost={parsed.cost} />}
+
         {parsed.policy && <PolicySection policy={parsed.policy} />}
 
         {isDrift && parsed.driftDetected && parsed.resources.length === 0 && (

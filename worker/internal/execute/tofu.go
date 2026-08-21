@@ -128,9 +128,6 @@ func hclQuote(s string) string {
 	return `"` + esc + `"`
 }
 
-// templateOwnedFiles are always overwritten from
-// /app/IaC/opentofu-<provider>/envs/_template on every sync so bundled IaC
-// updates land in the stack dir even if the user hasn't touched them.
 var templateOwnedFiles = map[string]bool{
 	"main.tf": true, "variables.tf": true, "providers.tf": true, "versions.tf": true,
 	"backend.tf": true, "README.md": true, "credentials.auto.tfvars.example": true,
@@ -149,11 +146,6 @@ func syncIaCIntoStack(stackDir, provider string, log func(string)) {
 		return
 	}
 
-	// Provider-change detection: if this stack dir was previously initialised
-	// against a different provider (e.g. bytedc → hetzner), the cached
-	// .terraform/ plugins and .terraform.lock.hcl still pin the old provider,
-	// so `tofu init -reconfigure` happily "reuses" huaweicloud/hcs. Wipe the
-	// per-stack init cache when the provider marker changes.
 	markerPath := filepath.Join(stackDir, ".opensible-provider")
 	prev := ""
 	if b, err := os.ReadFile(markerPath); err == nil {
@@ -167,9 +159,7 @@ func syncIaCIntoStack(stackDir, provider string, log func(string)) {
 	}
 	_ = os.WriteFile(markerPath, []byte(provider+"\n"), 0o644)
 
-	// stack_dir → envs/<stack>; go two levels up to get stacks_root.
-	// Modules are namespaced per provider so multiple provider stacks in the
-	// same project don't fight over stacksRoot/modules.
+
 	stacksRoot := filepath.Dir(filepath.Dir(stackDir))
 	modulesDirName := "modules-" + provider
 	if _, err := os.Stat(srcModules); err == nil {
@@ -179,11 +169,7 @@ func syncIaCIntoStack(stackDir, provider string, log func(string)) {
 			log(fmt.Sprintf("[sync] WARNING: failed to refresh modules: %v\n", err))
 			return
 		}
-		// Back-compat symlink/copy so existing templates that reference
-		// ../../modules keep working when only one provider is in use.
-		// Skip when another provider's marker exists anywhere else under
-		// stacksRoot — otherwise a Hetzner run would clobber ByteDC's
-		// legacy modules/ dir (or vice-versa) in mixed-provider projects.
+	
 		if otherProviderPresent(stacksRoot, stackDir, provider) {
 			log(fmt.Sprintf("[sync] skipped legacy modules/ copy: another provider stack exists in %s (using provider-namespaced %s/ only)\n", stacksRoot, modulesDirName))
 		} else {
@@ -212,10 +198,7 @@ func syncIaCIntoStack(stackDir, provider string, log func(string)) {
 	log(fmt.Sprintf("[sync] refreshed %s modules/ and %d template .tf files in %s\n", provider, copied, stackDir))
 }
 
-// otherProviderPresent walks stacksRoot/envs/* and returns true if any stack
-// dir other than the current one has an .opensible-provider marker pointing at
-// a different provider. Used to decide whether it's safe to touch the shared
-// legacy stacksRoot/modules path.
+
 func otherProviderPresent(stacksRoot, currentStackDir, currentProvider string) bool {
 	envsRoot := filepath.Join(stacksRoot, "envs")
 	entries, err := os.ReadDir(envsRoot)
@@ -261,6 +244,8 @@ func executeTofuRun(executionID string, execData map[string]any, projectID strin
 	// Policy gate: nil unless the backend shipped an opted-in policy payload.
 	policyCfg := parsePolicyConfig(runParams["policy"])
 	var policyRes *PolicyResult
+	costCfg := parseCostConfig(runParams["cost"])
+	var costRes *CostResult
 
 	defer func() {
 		if credsPath != "" {
@@ -270,6 +255,9 @@ func executeTofuRun(executionID string, execData map[string]any, projectID strin
 		result := map[string]any{"tofu_action": action, "stack": stackName}
 		if policyRes != nil {
 			result["policy"] = policyRes
+		}
+		if costRes != nil {
+			result["cost"] = costRes
 		}
 		client.FinishExecution(executionID, finalStatus, float64(time.Now().Unix()), duration, returnCode, "", result)
 	}()
@@ -329,10 +317,7 @@ func executeTofuRun(executionID string, execData map[string]any, projectID strin
 		for _, k := range keys {
 			if v, ok := secrets[k]; ok {
 				if s, ok := v.(string); ok && s != "" {
-					// Trim surrounding whitespace/newlines from pasted secrets
-					// (e.g. AWS access/secret keys) so they don't corrupt
-					// downstream signatures or auth headers. Preserve inner
-					// newlines for multi-line secrets like kubeconfig.
+				
 					trimmed := strings.Trim(s, " \t\r\n")
 					if trimmed == "" {
 						continue
@@ -396,6 +381,12 @@ func executeTofuRun(executionID string, execData map[string]any, projectID strin
 		}
 		policyRes = res
 		sendLog(formatPolicyReport(res))
+		if costCfg != nil {
+			if cres, cerr := estimateCost(raw, costCfg); cerr == nil {
+				costRes = cres
+				sendLog(formatCostReport(cres))
+			}
+		}
 		if res.Blocked {
 			finalStatus = "FAILED"
 			rc := 3
@@ -514,8 +505,7 @@ loop:
 	if returnCode != nil && *returnCode == 0 {
 		finalStatus = "SUCCESS"
 	}
-	// `drift` runs `tofu plan -detailed-exitcode`, where exit 2 means
-	// "changes detected" — a successful check, not a failure.
+
 	if strings.EqualFold(action, "drift") && returnCode != nil {
 		switch *returnCode {
 		case 0:
@@ -526,23 +516,37 @@ loop:
 			sendLog("\n[drift] DRIFT DETECTED — the live infrastructure differs from the recorded state (see plan above).\n")
 		}
 	}
-	// Policy evaluation for a plain `plan` run: reuse the tfplan that was just
-	// written, so the only extra work is one local `tofu show -json`.
-	if policyCfg != nil && strings.EqualFold(action, "plan") && finalStatus == "SUCCESS" && !killed {
-		if raw, serr := showPlanJSON(stackDir, "tfplan", env); serr == nil {
-			if res, eerr := evaluatePolicy(raw, policyCfg); eerr == nil {
-				policyRes = res
-				sendLog(formatPolicyReport(res))
-				if res.Blocked {
-					finalStatus = "FAILED"
-					rc := 3
-					returnCode = &rc
-				}
+	
+	if (policyCfg != nil || costCfg != nil) && strings.EqualFold(action, "plan") && finalStatus == "SUCCESS" && !killed {
+		raw, serr := showPlanJSON(stackDir, "tfplan", env)
+		if serr != nil {
+			if policyCfg != nil {
+				sendLog("[policy] WARNING: `tofu show -json tfplan` failed: " + serr.Error() + "\n")
 			} else {
-				sendLog("[policy] WARNING: could not parse plan JSON: " + eerr.Error() + "\n")
+				sendLog("[cost] WARNING: `tofu show -json tfplan` failed: " + serr.Error() + "\n")
 			}
 		} else {
-			sendLog("[policy] WARNING: `tofu show -json tfplan` failed: " + serr.Error() + "\n")
+			if policyCfg != nil {
+				if res, eerr := evaluatePolicy(raw, policyCfg); eerr == nil {
+					policyRes = res
+					sendLog(formatPolicyReport(res))
+					if res.Blocked {
+						finalStatus = "FAILED"
+						rc := 3
+						returnCode = &rc
+					}
+				} else {
+					sendLog("[policy] WARNING: could not parse plan JSON: " + eerr.Error() + "\n")
+				}
+			}
+			if costCfg != nil {
+				if cres, cerr := estimateCost(raw, costCfg); cerr == nil {
+					costRes = cres
+					sendLog(formatCostReport(cres))
+				} else {
+					sendLog("[cost] WARNING: could not price plan JSON: " + cerr.Error() + "\n")
+				}
+			}
 		}
 	}
 	if killed {

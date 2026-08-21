@@ -886,8 +886,13 @@ def _create_execution(project_id: Optional[str], stack: str, action: str, worker
 
     if _policy_enabled(project_id, stack) and action in ("plan", "apply", "destroy"):
         run_params["policy"] = _policy_config(project_id, stack)
-    if not worker_id:
+    try:
+        if _cost_enabled(project_id, stack) and action in ("plan", "apply", "destroy"):
+            run_params["cost"] = _cost_config(project_id, stack, provider)
+    except Exception as _ce:
+        current_app.logger.warning(f"[cost] config build failed for {stack}: {_ce}")
 
+    if not worker_id:
         try:
             from services.worker_registry import load_all_workers, is_worker_online
             candidates = []
@@ -1116,6 +1121,48 @@ _register_policy_routes(
 
 
 # ---------------------------------------------------------------------------
+# Cost estimation on plan (opt-out per stack, enabled by default)
+# Implementation lives in services/cloud_cost.py — see that module.
+# ---------------------------------------------------------------------------
+
+try:
+    from services.cloud_cost import (
+        cost_config_from_meta as _cost_config_from_meta,
+        cost_enabled_from_meta as _cost_enabled_from_meta,
+        register_cost_routes as _register_cost_routes,
+    )
+except ImportError:  # pragma: no cover
+    from .cloud_cost import (  # type: ignore
+        cost_config_from_meta as _cost_config_from_meta,
+        cost_enabled_from_meta as _cost_enabled_from_meta,
+        register_cost_routes as _register_cost_routes,
+    )
+
+
+def _cost_enabled(project_id: Optional[str], name: str) -> bool:
+    return _cost_enabled_from_meta(_read_meta(project_id, name))
+
+
+def _cost_config(project_id: Optional[str], name: str, provider: str) -> Dict[str, Any]:
+    return _cost_config_from_meta(_read_meta(project_id, name), provider)
+
+
+_register_cost_routes(
+    bp,
+    require_auth=require_auth,
+    get_project_id=lambda: _get_project_id(),
+    valid_name=lambda n: _valid_name(n),
+    stack_dir=lambda pid, n: _stack_dir(pid, n),
+    read_meta=lambda pid, n: _read_meta(pid, n),
+    save_meta=lambda pid, n, **kw: _save_meta(pid, n, **kw),
+    project_executions_dir=lambda pid: _project_executions_dir(pid),
+    read_stack_provider=lambda pid, n: _read_stack_provider(pid, n),
+)
+
+
+
+
+# ---------------------------------------------------------------------------
 # State management — locking visibility, versioning/rollback, remote backend.
 # ---------------------------------------------------------------------------
 
@@ -1151,6 +1198,11 @@ _cloud_state.register_state_routes(
     current_actor=_current_actor,
     get_execution=_get_execution_record,
 )
+
+
+
+
+
 
 
 def _status_to_ui(s: str) -> str:
