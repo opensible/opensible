@@ -1,11 +1,4 @@
 """Inventory groups + hosts + connection-secret routes blueprint.
-
-Extracted from ``backend/app.py`` during the phased refactor. URLs, methods,
-view-function names, response shapes, and auth decorators are preserved.
-
-Helpers that still live in ``app.py`` (``yaml_loader``,
-``get_project_host_vars_dir``, ``get_project_group_vars_dir``) are resolved
-lazily via the initialized app module to avoid circular imports.
 """
 from __future__ import annotations
 
@@ -391,9 +384,23 @@ def api_set_host_connection_secret(host_name):
         
         host_vars_dir = get_project_host_vars_dir(project_id)
         try:
+            Path(host_vars_dir).mkdir(parents=True, exist_ok=True)
+        except OSError as oe:
+            app_logger.error(
+                f"Cannot create host_vars dir {host_vars_dir}: {oe}", exc_info=True
+            )
+            return jsonify({
+                'success': False,
+                'error': (
+                    f'Cannot write to {host_vars_dir} ({oe.strerror}). '
+                    'Check ownership of the data volume (chown -R 1000:1000 <data dir>).'
+                ),
+            }), 500
+        try:
             host_file = _safe_child_path(host_vars_dir, host_name, '.yml')
         except ValueError as ve:
             return jsonify({'success': False, 'error': str(ve)}), 400
+        
         
         # host_vars 
         host_vars = {}
@@ -469,15 +476,27 @@ def api_set_host_connection_secret(host_name):
                 )
             except Exception as e:
                 safe_error_msg = safe_log_error("Error validating secret", e)
-                app_logger.error(safe_error_msg)
-                return jsonify({'success': False, 'error': 'Failed to validate secret'}), 500
+                app_logger.error(safe_error_msg, exc_info=True)
+                return jsonify({
+                    'success': False,
+                    'error': f'Failed to validate secret: {type(e).__name__}: {e}',
+                }), 500
         else:
             host_vars.pop('connectionSecret', None)
 
         # Persist host_vars — now guaranteed free of credential material.
-        host_vars_dir.mkdir(parents=True, exist_ok=True)
-        with open(host_file, 'w', encoding='utf-8') as f:
-            yaml_loader.dump(host_vars, f)
+        try:
+            with open(host_file, 'w', encoding='utf-8') as f:
+                yaml_loader.dump(host_vars, f)
+        except OSError as oe:
+            app_logger.error(f"Cannot write {host_file}: {oe}", exc_info=True)
+            return jsonify({
+                'success': False,
+                'error': (
+                    f'Cannot write {host_file} ({oe.strerror}). '
+                    'Check ownership of the data volume (chown -R 1000:1000 <data dir>).'
+                ),
+            }), 500
 
         app_logger.info(f"Connection settings saved for host {host_name} in project {project_id}")
         
@@ -487,8 +506,11 @@ def api_set_host_connection_secret(host_name):
         })
     except Exception as e:
         safe_error_msg = safe_log_error("Error setting host connection secret", e)
-        app_logger.error(safe_error_msg)
-        return jsonify({'success': False, 'error': 'Failed to set connection secret'}), 500
+        app_logger.error(safe_error_msg, exc_info=True)
+        return jsonify({
+            'success': False,
+            'error': f'Failed to set connection secret: {type(e).__name__}: {e}',
+        }), 500
 
 
 @bp.route('/api/groups/<group_name>/connection-secret', methods=['PUT'])
