@@ -1,6 +1,6 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import {
-  Cloud, PieChart, Layers, Plus, Settings2, Server, Shield, KeyRound, BookOpen, ScrollText, FileCode, ChevronsLeft, ChevronsRight, Home, ShieldCheck, Plug, Cpu, Users, Calculator, Rocket, LayoutTemplate, Library, Network, GitBranch, History,
+  Cloud, PieChart, Layers, Plus, Settings2, Server, Shield, KeyRound, BookOpen, ScrollText, FileCode, ChevronsLeft, ChevronsRight, Home, ShieldCheck, Plug, Cpu, Users, Calculator, Rocket, LayoutTemplate, Library, Network, GitBranch, History, Github,
 } from "lucide-react";
 import logoSvg from "@/assets/opensible-logo.png";
 import { useT } from "@/lib/i18n";
@@ -59,9 +59,20 @@ export function AppSidebar() {
           <img src={logoSvg} className="h-9 w-9" alt="OpenSible" />
         </div>
         {!collapsed && (
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="font-semibold text-base truncate">{t("app.name")}</div>
           </div>
+        )}
+        {!collapsed && (
+          <a
+            href="https://github.com/opensible/opensible"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="OpenSible on GitHub"
+            className="shrink-0 flex items-center justify-center h-8 w-8 rounded-lg text-[var(--color-sidebar-muted)] hover:text-[var(--color-sidebar-accent)] hover:bg-[var(--color-sidebar-active-bg)] transition-colors"
+          >
+            <Github className="h-[18px] w-[18px]" />
+          </a>
         )}
       </div>
 
