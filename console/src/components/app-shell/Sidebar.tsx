@@ -1,6 +1,6 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import {
-  Cloud, PieChart, Layers, Plus, Settings2, Server, Shield, KeyRound, BookOpen, ScrollText, FileCode, ChevronsLeft, ChevronsRight, Home, ShieldCheck, Plug, Cpu, Users, Calculator, Rocket, LayoutTemplate, Library, Network, GitBranch, History,
+  Cloud, PieChart, Layers, Plus, Settings2, Server, Shield, KeyRound, BookOpen, ScrollText, FileCode, ChevronsLeft, ChevronsRight, Home, ShieldCheck, Plug, Cpu, Users, Calculator, Rocket, LayoutTemplate, Library, Network, GitBranch, History, Github,
 } from "lucide-react";
 import logoSvg from "@/assets/opensible-logo.png";
 import { useT } from "@/lib/i18n";
@@ -59,13 +59,24 @@ export function AppSidebar() {
           <img src={logoSvg} className="h-9 w-9" alt="OpenSible" />
         </div>
         {!collapsed && (
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <div className="font-semibold text-base truncate">{t("app.name")}</div>
           </div>
         )}
+        {!collapsed && (
+          <a
+            href="https://github.com/opensible/opensible"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="OpenSible on GitHub"
+            className="shrink-0 flex items-center justify-center h-8 w-8 rounded-lg text-[var(--color-sidebar-muted)] hover:text-[var(--color-sidebar-accent)] hover:bg-[var(--color-sidebar-active-bg)] transition-colors"
+          >
+            <Github className="h-[18px] w-[18px]" />
+          </a>
+        )}
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 py-4 text-sm custom-scrollbar">
+      <nav className="flex-1 overflow-y-auto px-2 py-4 custom-scrollbar">
         <Section title={t("nav.overview")} items={overview} pathname={pathname} collapsed={collapsed} />
         <Section title={t("nav.cloud")} items={cloud} pathname={pathname} collapsed={collapsed} />
         <Section title={t("nav.infrastructure")} items={infra} pathname={pathname} collapsed={collapsed} />
@@ -94,9 +105,9 @@ function Section({ title, items, pathname, collapsed }: { title: string; items: 
   );
 
   return (
-    <div className="mb-5">
+    <div className="mb-4">
       {!collapsed && (
-        <div className="px-3 mb-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--color-sidebar-muted)]">{title}</div>
+        <div className="px-3 mb-2 text-[11px] font-medium uppercase tracking-[0.18em] text-[var(--color-sidebar-muted)]">{title}</div>
       )}
       <ul className="space-y-0.5">
         {visibleItems.map(it => {
@@ -107,7 +118,8 @@ function Section({ title, items, pathname, collapsed }: { title: string; items: 
           const active = matches && !hasMoreSpecific;
           const base = cn(
             "relative flex items-center gap-3 rounded-lg transition-colors",
-            collapsed ? "justify-center px-2 py-2.5" : "px-3 py-2.5"
+            "text-[15px] font-medium tracking-[-0.01em] leading-6",
+            collapsed ? "justify-center px-2 py-2" : "px-3 py-2"
           );
           if (it.disabled) {
             return (
@@ -127,7 +139,7 @@ function Section({ title, items, pathname, collapsed }: { title: string; items: 
                 className={cn(
                   base,
                   "text-[var(--color-sidebar-foreground)] hover:text-white hover:bg-[var(--color-sidebar-active-bg)]",
-                  active && "bg-[var(--color-sidebar-active-bg)] text-[var(--color-sidebar-accent)] font-medium"
+                  active && "bg-[var(--color-sidebar-active-bg)] text-[var(--color-sidebar-accent)] font-semibold"
                 )}
               >
                 {active && <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-r bg-[var(--color-sidebar-accent)]" />}

@@ -135,9 +135,19 @@ function TemplatesPage() {
         setOpenId(bp.templateId);
       }
     } catch (e) {
-      toast.error(`Failed to create job: ${(e as Error).message}`);
+      const err = e as { message?: string; body?: { field_errors?: Record<string, string | string[]> } };
+      const fieldErrors = err?.body?.field_errors;
+      if (fieldErrors && Object.keys(fieldErrors).length > 0) {
+        const details = Object.entries(fieldErrors)
+          .map(([field, msg]) => `${field}: ${Array.isArray(msg) ? msg.join(", ") : msg}`)
+          .join("\n");
+        toast.error("Failed to create job", { description: details });
+      } else {
+        toast.error(`Failed to create job: ${err?.message ?? "unknown error"}`);
+      }
     }
   };
+
 
   const handleBlueprintAction = async (action: BlueprintAction) => {
     const preview = blueprintPreview;
