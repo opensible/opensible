@@ -145,7 +145,7 @@ export const uninstallGroup: BlueprintGroup = {
         flush_iptables: false,
         argocd_namespace: "argocd",
         argocd_release: "argocd",
-        kubeconfig: "/etc/rancher/k3s/k3s.yaml",
+        kubeconfig: "",
         delete_namespace: false,
         reboot_after: false,
         become: true,

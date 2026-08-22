@@ -85,7 +85,8 @@ export const kubernetesGroup: BlueprintGroup = {
         namespace: "argocd",
         create_namespace: true,
         helm_wait: true,
-        kubeconfig: "/etc/rancher/k3s/k3s.yaml",
+        kubeconfig: "",
+
         helm_values:
           "global:\n  domain: argocd.example.com\nserver:\n  service:\n    type: ClusterIP\n  ingress:\n    enabled: false\nconfigs:\n  params:\n    server.insecure: \"true\"\ndex:\n  enabled: false\nnotifications:\n  enabled: false\n",
       },
@@ -121,7 +122,7 @@ export const kubernetesGroup: BlueprintGroup = {
         namespace: "istio-system",
         create_namespace: true,
         helm_wait: true,
-        kubeconfig: "/etc/rancher/k3s/k3s.yaml",
+        kubeconfig: "",
         helm_values:
           "# Istio control plane values\n" +
           "global:\n" +
@@ -166,7 +167,7 @@ export const kubernetesGroup: BlueprintGroup = {
         namespace: "linkerd",
         create_namespace: true,
         helm_wait: true,
-        kubeconfig: "/etc/rancher/k3s/k3s.yaml",
+        kubeconfig: "",
         helm_values:
           "# Prerequisite (run once on a control-plane node):\n" +
           "#   helm install linkerd-crds linkerd/linkerd-crds -n linkerd --create-namespace\n" +
@@ -210,7 +211,7 @@ export const kubernetesGroup: BlueprintGroup = {
         namespace: "kuma-system",
         create_namespace: true,
         helm_wait: true,
-        kubeconfig: "/etc/rancher/k3s/k3s.yaml",
+        kubeconfig: "",
         helm_values:
           "controlPlane:\n" +
           "  mode: standalone\n" +
