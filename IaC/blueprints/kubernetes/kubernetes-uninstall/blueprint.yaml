@@ -1,0 +1,24 @@
+id: k8s-uninstall
+name: Kubernetes Uninstall / Purge
+group: kubernetes
+category: Kubernetes
+description: Completely remove a kubeadm or k3s Kubernetes cluster and clean up leftover state so nodes can be reinstalled.
+logo: https://cdn.simpleicons.org/kubernetes/326CE5
+tags: [kubeadm, k3s, uninstall, cleanup, purge]
+author: opensible
+stars: 42
+source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/kubernetes/kubernetes-uninstall
+requires:
+  ansible: ">=2.14"
+entrypoint: playbook.yml
+variables:
+  cluster_name: opensible
+  cluster_type: auto
+  confirm_purge: false
+  drain_nodes: true
+  remove_packages: true
+  remove_containerd: true
+  remove_etcd_data: true
+  remove_cni: true
+  remove_images: false
+  remove_kubeconfig: true

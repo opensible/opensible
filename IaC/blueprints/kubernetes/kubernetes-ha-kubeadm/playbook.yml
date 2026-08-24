@@ -10,6 +10,8 @@
   hosts: "10.0.0.10,10.0.0.20,"
   become: true
   gather_facts: false
+  environment:
+    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   vars:
     _node_users:
       10.0.0.10: root
@@ -74,6 +76,19 @@
       register: active_swaps
       changed_when: false
       failed_when: active_swaps.stdout | trim != ''
+    - name: Keep swap off across reboots (mask swap units and zram)
+      ansible.builtin.shell: |
+        systemctl --no-block mask swap.target 2>/dev/null || true
+        for unit in $(systemctl list-unit-files --type=swap --no-legend 2>/dev/null | awk '{print $1}'); do
+          systemctl mask "$unit" 2>/dev/null || true
+        done
+        if systemctl list-unit-files 2>/dev/null | grep -q '^systemd-zram-setup@'; then
+          systemctl disable --now 'systemd-zram-setup@zram0.service' 2>/dev/null || true
+          systemctl mask 'systemd-zram-setup@zram0.service' 2>/dev/null || true
+        fi
+      args: {executable: /bin/bash}
+      changed_when: false
+      failed_when: false
     - name: Install Kubernetes node prerequisite packages (Debian/Ubuntu)
       ansible.builtin.apt:
         name: [apt-transport-https, ca-certificates, curl, gnupg, containerd, conntrack, ipset, iptables, ebtables, ethtool, socat, kmod, coreutils, util-linux]
@@ -244,6 +259,18 @@
         state: present
         update_cache: true
       when: ansible_os_family == 'Debian'
+    - name: Check installed Kubernetes binaries
+      ansible.builtin.stat:
+        path: '/usr/bin/{{ item }}'
+      loop: [kubeadm, kubelet, kubectl]
+      register: kube_binary_files
+      when: ansible_os_family == 'Debian'
+    - name: Repair Kubernetes packages when installed binaries are missing
+      ansible.builtin.shell: >-
+        apt-get install --reinstall --allow-change-held-packages -y kubeadm=1.30.4-* kubelet=1.30.4-* kubectl=1.30.4-*
+      when:
+        - ansible_os_family == 'Debian'
+        - kube_binary_files.results | selectattr('stat.exists', 'equalto', false) | list | length > 0
     - name: Install kubeadm/kubelet/kubectl (RHEL family)
       ansible.builtin.package:
         name: [kubeadm, kubelet, kubectl]
@@ -255,6 +282,17 @@
         selection: hold
       loop: [kubeadm, kubelet, kubectl]
       when: ansible_os_family == 'Debian'
+    - name: Verify Kubernetes binaries are installed
+      ansible.builtin.shell: |
+        set -e
+        export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        for bin in kubeadm kubelet kubectl; do
+          if ! command -v "$bin" >/dev/null 2>&1; then
+            echo "$bin is not installed or not executable on this node" >&2
+            exit 1
+          fi
+        done
+      changed_when: false
     - name: Pin kubelet node IP
       ansible.builtin.copy:
         dest: /etc/default/kubelet
@@ -262,8 +300,45 @@
         content: |
           KUBELET_EXTRA_ARGS=--node-ip={{ inventory_hostname }} --hostname-override={{ k8s_node_name }}
       notify: restart kubelet
-    - name: Enable kubelet
-      ansible.builtin.systemd: {name: kubelet, enabled: true, state: started}
+    - name: Ensure systemd drop-in directories exist
+      ansible.builtin.file:
+        path: '{{ item }}'
+        state: directory
+        mode: '0755'
+      loop:
+        - /etc/systemd/system/kubelet.service.d
+        - /etc/systemd/system/containerd.service.d
+    - name: Ensure kubelet survives reboots (ordering + restart policy)
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/kubelet.service.d/20-opensible-boot.conf
+        mode: '0644'
+        content: |
+          [Unit]
+          After=network-online.target containerd.service
+          Wants=network-online.target containerd.service
+          [Service]
+          Restart=always
+          RestartSec=10
+          [Install]
+          WantedBy=multi-user.target
+      notify: restart kubelet
+    - name: Ensure containerd restarts automatically on failure
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/containerd.service.d/20-opensible-boot.conf
+        mode: '0644'
+        content: |
+          [Unit]
+          After=network-online.target
+          Wants=network-online.target
+          [Service]
+          Restart=always
+          RestartSec=5
+      notify: restart containerd
+    - name: Reload systemd after boot drop-ins
+      ansible.builtin.systemd: {daemon_reload: true}
+    - name: Enable containerd and kubelet at boot
+      ansible.builtin.systemd: {name: '{{ item }}', enabled: true, state: started}
+      loop: [containerd, kubelet]
   handlers:
     - name: restart containerd
       ansible.builtin.systemd: {name: containerd, state: restarted}
@@ -274,6 +349,8 @@
   hosts: "10.0.0.10,"
   become: true
   gather_facts: true
+  environment:
+    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   vars:
     _node_users:
       10.0.0.10: root
@@ -307,7 +384,7 @@
         replace: '    server: https://{{ inventory_hostname }}:6443'
       when: admin_conf.stat.exists
     - name: Check existing control-plane API health
-      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
+      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
       register: existing_api_ready
       failed_when: false
       changed_when: false
@@ -317,8 +394,8 @@
         msg: 'Kubeadm state exists but the API is not reachable on this control-plane IP. Enable Reset existing kubeadm state before install, then rerun this template instance.'
       when: admin_conf.stat.exists and existing_api_ready.rc != 0
     - name: kubeadm init
-      ansible.builtin.command: >-
-        kubeadm init --kubernetes-version=v1.30.4 --pod-network-cidr=10.244.0.0/16 --service-cidr=10.96.0.0/12 --apiserver-advertise-address={{ inventory_hostname }} --node-name={{ k8s_node_name }} --cri-socket=unix:///run/containerd/containerd.sock --apiserver-cert-extra-sans=10.0.0.10,cp-1
+      ansible.builtin.shell: >-
+        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubeadm init --kubernetes-version=v1.30.4 --pod-network-cidr=10.244.0.0/16 --service-cidr=10.96.0.0/12 --apiserver-advertise-address={{ inventory_hostname }} --node-name={{ k8s_node_name }} --cri-socket=unix:///run/containerd/containerd.sock --apiserver-cert-extra-sans=10.0.0.10,cp-1
       when: not admin_conf.stat.exists
       register: kubeadm_init
     - name: Copy admin.conf for root kubectl
@@ -339,7 +416,7 @@
         regexp: '^\s*server:\s+https://.*:6443\s*$'
         replace: '    server: https://{{ inventory_hostname }}:6443'
     - name: Wait for Kubernetes API to become ready
-      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
+      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
       register: api_ready
       retries: 60
       delay: 5
@@ -359,7 +436,7 @@
       args: {executable: /bin/bash}
       changed_when: true
     - name: Generate worker join command
-      ansible.builtin.command: kubeadm token create --kubeconfig=/root/.kube/bootstrap-local.conf --print-join-command
+      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubeadm token create --kubeconfig=/root/.kube/bootstrap-local.conf --print-join-command
       register: worker_join_cmd
       changed_when: false
     - name: Slurp admin.conf for cluster ops
@@ -370,7 +447,7 @@
         kubeadm_worker_join: "{{ worker_join_cmd.stdout | trim }}"
         first_cp_admin_conf_b64_content: "{{ first_cp_admin_conf_b64.content }}"
     - name: Verify Kubernetes API is ready for node joins
-      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
+      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
       register: api_ready_for_joins
       retries: 60
       delay: 5
@@ -381,6 +458,8 @@
   hosts: "10.0.0.20,"
   become: true
   gather_facts: false
+  environment:
+    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   vars:
     _node_users:
       10.0.0.10: root
@@ -450,6 +529,8 @@
   hosts: "10.0.0.10,"
   become: true
   gather_facts: false
+  environment:
+    PATH: "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
   vars:
     _node_users:
       10.0.0.10: root
@@ -476,7 +557,7 @@
         regexp: '^\s*server:\s+https://.*:6443\s*$'
         replace: '    server: https://{{ inventory_hostname }}:6443'
     - name: Verify Kubernetes API before post-install add-ons
-      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
+      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
       register: api_ready_before_addons
       retries: 60
       delay: 5
@@ -533,14 +614,14 @@
       register: cni_apply
       changed_when: "'created' in cni_apply.stdout or 'configured' in cni_apply.stdout"
     - name: Verify Kubernetes API remains healthy after CNI
-      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
+      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
       register: api_ready_after_cni
       retries: 60
       delay: 5
       until: api_ready_after_cni.rc == 0
       changed_when: false
     - name: Apply metrics-server manifest
-      ansible.builtin.command: kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
       environment: {KUBECONFIG: /root/.kube/bootstrap-local.conf}
       register: metrics_apply
       changed_when: "'created' in metrics_apply.stdout or 'configured' in metrics_apply.stdout"
@@ -571,14 +652,14 @@
       changed_when: false
       failed_when: false
     - name: Verify Kubernetes API remains healthy after add-ons
-      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
+      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl --kubeconfig=/root/.kube/bootstrap-local.conf get --raw=/readyz
       register: api_ready_after_addons
       retries: 60
       delay: 5
       until: api_ready_after_addons.rc == 0
       changed_when: false
     - name: Wait for all Kubernetes nodes to become Ready
-      ansible.builtin.command: kubectl --kubeconfig=/root/.kube/bootstrap-local.conf wait --for=condition=Ready nodes --all --timeout=300s
+      ansible.builtin.shell: PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin kubectl --kubeconfig=/root/.kube/bootstrap-local.conf wait --for=condition=Ready nodes --all --timeout=300s
       register: nodes_ready
       failed_when: false
       changed_when: false
