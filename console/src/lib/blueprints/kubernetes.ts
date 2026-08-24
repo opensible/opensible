@@ -41,33 +41,6 @@ export const kubernetesGroup: BlueprintGroup = {
     },
 
     {
-      id: "k8s-uninstall",
-      name: "Kubernetes Uninstall / Purge",
-      description:
-        "Completely remove a kubeadm or k3s cluster from selected nodes. Drains, resets, removes packages, deletes etcd/CNI data, flushes iptables, and cleans images.",
-      logo: LOGO("kubernetes", "326CE5"),
-      tags: ["kubeadm", "k3s", "uninstall", "cleanup"],
-      author: "opensible",
-      stars: 42,
-      available: true,
-      path: "IaC/blueprints/kubernetes/kubernetes-uninstall",
-      templateId: "k8s-uninstall",
-      filenameStem: "kubernetes-uninstall",
-      defaults: {
-        cluster_name: "opensible",
-        cluster_type: "auto",
-        confirm_purge: false,
-        drain_nodes: true,
-        remove_packages: true,
-        remove_containerd: true,
-        remove_etcd_data: true,
-        remove_cni: true,
-        remove_images: false,
-        remove_kubeconfig: true,
-      },
-    },
-
-    {
       id: "k3s-ha-etcd",
       name: "k3s HA (embedded etcd)",
       description: "Lightweight k3s cluster with embedded etcd and Longhorn storage.",
