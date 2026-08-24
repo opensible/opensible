@@ -84,3 +84,23 @@
     - name: Print pod status
       ansible.builtin.debug:
         var: argocd_pods.stdout_lines
+
+    - name: Retrieve Argo CD initial admin password
+      ansible.builtin.shell: |
+        set -o pipefail
+        kubectl -n {{ namespace }} get secret argocd-initial-admin-secret \
+          -o jsonpath='{.data.password}' | base64 -d
+        echo
+      environment:
+        KUBECONFIG: "{{ kubeconfig }}"
+      register: argocd_admin_pass
+      changed_when: false
+      failed_when: false
+
+    - name: Print admin login details
+      ansible.builtin.debug:
+        msg:
+          - "Argo CD UI: kubectl -n {{ namespace }} port-forward svc/{{ release }}-argocd-server 8080:443  ->  https://localhost:8080"
+          - "Username: admin"
+          - "Password: {{ argocd_admin_pass.stdout | default('<not found — see argocd-initial-admin-secret in namespace ' ~ namespace) }}"
+      when: argocd_admin_pass is defined
