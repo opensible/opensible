@@ -6,6 +6,7 @@ export const nav: Record<string, string> = {
   "nav.homeDashboard": "ផ្ទាំងគ្រប់គ្រងដើម",
   "nav.deployment": "ប្រវត្តិការប្រតិបត្តិការ",
   "nav.jobsTemplates": "Stack & Deployment",
+  "nav.stackHubBlueprints": "Stack Hub Blueprints",
   "nav.hosts": "ម៉ាស៊ីន និងក្រុម",
   "nav.roles": "តួនាទី",
   "nav.playbooks": "Playbooks",

@@ -26,6 +26,7 @@ export function AppSidebar() {
   const infra: Item[] = [
     { to: "/infrastructure/deployment", label: t("nav.deployment"), icon: Rocket },
     { to: "/infrastructure/templates", label: t("nav.jobsTemplates"), icon: Library },
+    { to: "/infrastructure/blueprints", label: t("nav.stackHubBlueprints"), icon: LayoutTemplate },
     { to: "/infrastructure/hosts", label: t("nav.hosts"), icon: Network },
     { to: "/infrastructure/playbooks-roles", label: t("nav.playbooksRoles"), icon: BookOpen },
     { to: "/infrastructure/vaults-secrets", label: t("nav.vaultsSecrets"), icon: ShieldCheck },

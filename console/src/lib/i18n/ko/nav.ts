@@ -6,6 +6,7 @@ export const nav: Record<string, string> = {
   "nav.homeDashboard": "홈 대시보드",
   "nav.deployment": "실행 이력",
   "nav.jobsTemplates": "스택 및 배포",
+  "nav.stackHubBlueprints": "Stack Hub 블루프린트",
   "nav.hosts": "호스트 및 그룹",
   "nav.roles": "역할",
   "nav.playbooks": "플레이북",
