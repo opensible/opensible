@@ -13,6 +13,7 @@ import type { Blueprint, BlueprintGroup } from "@/lib/blueprints";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useT } from "@/lib/i18n";
+import { useProjects } from "@/lib/project";
 
 export const Route = createFileRoute("/infrastructure/blueprints")({
   component: BlueprintsPage,
@@ -21,6 +22,7 @@ export const Route = createFileRoute("/infrastructure/blueprints")({
 function BlueprintsPage() {
   const t = useT();
   const qc = useQueryClient();
+  const { currentId } = useProjects();
   const [bpSearch, setBpSearch] = useState("");
   const [runLogId, setRunLogId] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -48,6 +50,13 @@ function BlueprintsPage() {
   ) => {
     if (!bp.available || !bp.templateId) {
       toast.error("This blueprint is not yet wired to an executable template.");
+      return;
+    }
+
+    if (!currentId) {
+      toast.error("Select a project first", {
+        description: "Blueprint jobs are saved inside a project. Pick or create one from the project switcher.",
+      });
       return;
     }
 
