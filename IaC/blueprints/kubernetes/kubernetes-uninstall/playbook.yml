@@ -1,194 +1,240 @@
 ---
 # Static snapshot of the k8s-uninstall template.
 # The canonical renderer lives in backend/templates/k8s_uninstall.py.
-
 - name: Kubernetes — purge cluster 'opensible'
   hosts: all
   become: true
   gather_facts: true
   vars:
-    confirm_purge: false
+    confirm_purge: true
     drain_nodes: true
     cluster_type: auto
   tasks:
-    - name: Safety check — purge must be confirmed
-      ansible.builtin.fail:
-        msg: "Set confirm_purge=true to run this destructive playbook."
-      when: not (confirm_purge | default(false) | bool)
+  - name: Safety check — purge must be confirmed
+    ansible.builtin.fail:
+      msg: "Set confirm_purge=true to run this destructive playbook."
+    when: not (confirm_purge | default(false) | bool)
 
-    - name: Detect kubeadm
-      ansible.builtin.stat:
-        path: /usr/bin/kubeadm
-      register: kubeadm_bin
+  - name: Detect kubeadm
+    ansible.builtin.stat:
+      path: /usr/bin/kubeadm
+    register: kubeadm_bin
 
-    - name: Detect k3s
-      ansible.builtin.stat:
-        path: /usr/local/bin/k3s
-      register: k3s_bin
+  - name: Detect k3s
+    ansible.builtin.stat:
+      path: /usr/local/bin/k3s
+    register: k3s_bin
 
-    - name: Set detected cluster type fact
-      ansible.builtin.set_fact:
-        cluster_type: "{% if kubeadm_bin.stat.exists %}kubeadm{% elif k3s_bin.stat.exists %}k3s{% else %}unknown{% endif %}"
+  - name: Set detected cluster type fact
+    ansible.builtin.set_fact:
+      detected_cluster_type: "{% if kubeadm_bin.stat.exists %}kubeadm{% elif k3s_bin.stat.exists %}k3s{% else %}unknown{% endif %}"
+      cluster_type: "{% if kubeadm_bin.stat.exists %}kubeadm{% elif k3s_bin.stat.exists %}k3s{% else %}unknown{% endif %}"
 
-    - name: Fail if cluster type cannot be determined
-      ansible.builtin.fail:
-        msg: "Could not auto-detect cluster type. Set cluster_type to kubeadm or k3s, or ensure binaries are present."
-      when: cluster_type == 'unknown'
+  - name: Fail if cluster type cannot be determined
+    ansible.builtin.fail:
+      msg: "Could not auto-detect cluster type. Set cluster_type to kubeadm or k3s, or ensure binaries are present."
+    when: cluster_type == 'unknown'
 
-    - name: Find kubeconfig for kubeadm
-      ansible.builtin.shell: |
-        set -o pipefail
-        if test -r /etc/kubernetes/admin.conf; then echo /etc/kubernetes/admin.conf
-        elif test -r ~/.kube/config; then echo ~/.kube/config
-        elif test -r /etc/rancher/k3s/k3s.yaml; then echo /etc/rancher/k3s/k3s.yaml
-        else echo ''
+  - name: Find kubeconfig for kubeadm
+    ansible.builtin.shell: |
+      set -o pipefail
+      if test -r /etc/kubernetes/admin.conf; then echo /etc/kubernetes/admin.conf
+      elif test -r ~/.kube/config; then echo ~/.kube/config
+      elif test -r /etc/rancher/k3s/k3s.yaml; then echo /etc/rancher/k3s/k3s.yaml
+      else echo ''
+      fi
+    args:
+      executable: /bin/bash
+    register: kubeconfig_path
+    changed_when: false
+    when: cluster_type == 'kubeadm'
+
+  - name: Reset kubeadm
+    ansible.builtin.command: kubeadm reset -f
+    register: kubeadm_reset
+    when: cluster_type == 'kubeadm'
+    ignore_errors: true
+
+  - name: Run k3s server uninstall script
+    ansible.builtin.command: /usr/local/bin/k3s-uninstall.sh
+    args:
+      removes: /usr/local/bin/k3s-uninstall.sh
+    register: k3s_uninstall
+    when: cluster_type == 'k3s'
+    ignore_errors: true
+
+  - name: Run k3s agent uninstall script
+    ansible.builtin.command: /usr/local/bin/k3s-agent-uninstall.sh
+    args:
+      removes: /usr/local/bin/k3s-agent-uninstall.sh
+    when: cluster_type == 'k3s'
+    ignore_errors: true
+
+  - name: Stop and disable Kubernetes services (only present units)
+    ansible.builtin.shell: |
+      set -o pipefail
+      for svc in kubelet containerd k3s k3s-agent kubectl-proxy; do
+        if systemctl list-unit-files "${svc}.service" 2>/dev/null | grep -q "^${svc}.service"; then
+          systemctl stop "${svc}" 2>/dev/null || true
+          systemctl disable "${svc}" 2>/dev/null || true
         fi
-      args:
-        executable: /bin/bash
-      register: kubeconfig_path
-      changed_when: false
-      when: cluster_type == 'kubeadm'
+      done
+      systemctl reset-failed 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    changed_when: true
+    ignore_errors: true
 
-    - name: Drain node before reset
-      ansible.builtin.shell: |
-        set -o pipefail
-        KUBECONFIG="{{ kubeconfig_path.stdout | trim }}" kubectl drain "{{ ansible_hostname | default(inventory_hostname) }}" --ignore-daemonsets --delete-emptydir-data --force --timeout=120s || true
-      args:
-        executable: /bin/bash
-      when:
-        - cluster_type == 'kubeadm'
-        - drain_nodes | default(true) | bool
-        - kubeconfig_path.stdout | trim | length > 0
-      ignore_errors: true
+  - name: Release apt holds on Kubernetes packages
+    ansible.builtin.shell: |
+      set -o pipefail
+      command -v apt-mark >/dev/null 2>&1 || exit 0
+      apt-mark unhold kubelet kubeadm kubectl kubernetes-cni cri-tools 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    changed_when: false
+    ignore_errors: true
 
-    - name: Reset kubeadm
-      ansible.builtin.command: kubeadm reset -f
-      register: kubeadm_reset
-      when: cluster_type == 'kubeadm'
-      ignore_errors: true
+  - name: Remove Kubernetes packages
+    ansible.builtin.shell: |
+      set -o pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      if command -v apt-get >/dev/null 2>&1; then
+        apt-get purge -y --allow-change-held-packages \
+          kubelet kubeadm kubectl kubernetes-cni cri-tools || true
+        apt-get autoremove -y --purge || true
+      elif command -v dnf >/dev/null 2>&1; then
+        dnf remove -y kubelet kubeadm kubectl kubernetes-cni cri-tools || true
+      elif command -v yum >/dev/null 2>&1; then
+        yum remove -y kubelet kubeadm kubectl kubernetes-cni cri-tools || true
+      fi
+      dpkg --purge --force-all kubelet kubeadm kubectl kubernetes-cni cri-tools 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    changed_when: true
+    ignore_errors: true
 
-    - name: Run k3s server uninstall script
-      ansible.builtin.command: /usr/local/bin/k3s-uninstall.sh
-      args:
-        removes: /usr/local/bin/k3s-uninstall.sh
-      register: k3s_uninstall
-      when: cluster_type == 'k3s'
-      ignore_errors: true
+  - name: Remove leftover Kubernetes binaries and apt sources
+    ansible.builtin.shell: |
+      set -o pipefail
+      rm -f /usr/bin/kubeadm /usr/bin/kubectl /usr/bin/kubelet \
+            /usr/local/bin/kubeadm /usr/local/bin/kubectl /usr/local/bin/kubelet \
+            /usr/bin/crictl /usr/local/bin/crictl /usr/local/bin/helm /usr/bin/helm || true
+      rm -rf /etc/default/kubelet /etc/systemd/system/kubelet.service.d \
+             /etc/systemd/system/kubelet.service /usr/lib/systemd/system/kubelet.service \
+             /etc/crictl.yaml /etc/sysctl.d/99-kubernetes-cri.conf \
+             /etc/modules-load.d/k8s.conf || true
+      rm -f /etc/apt/sources.list.d/kubernetes.list /etc/apt/sources.list.d/pkgs_k8s_io.list \
+            /etc/apt/keyrings/kubernetes-apt-keyring.gpg \
+            /usr/share/keyrings/kubernetes-apt-keyring.gpg || true
+      hash -r 2>/dev/null || true
+      systemctl daemon-reload 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    changed_when: true
+    ignore_errors: true
 
-    - name: Run k3s agent uninstall script
-      ansible.builtin.command: /usr/local/bin/k3s-agent-uninstall.sh
-      args:
-        removes: /usr/local/bin/k3s-agent-uninstall.sh
-      when: cluster_type == 'k3s'
-      ignore_errors: true
+  - name: Remove containerd package
+    ansible.builtin.shell: |
+      set -o pipefail
+      export DEBIAN_FRONTEND=noninteractive
+      if command -v apt-get >/dev/null 2>&1; then
+        apt-mark unhold containerd containerd.io runc 2>/dev/null || true
+        apt-get purge -y --allow-change-held-packages containerd containerd.io runc || true
+        apt-get autoremove -y --purge || true
+      elif command -v dnf >/dev/null 2>&1; then
+        dnf remove -y containerd containerd.io runc || true
+      elif command -v yum >/dev/null 2>&1; then
+        yum remove -y containerd containerd.io runc || true
+      fi
+      rm -f /usr/local/bin/containerd /usr/local/bin/ctr /usr/local/bin/runc || true
+    args:
+      executable: /bin/bash
+    changed_when: true
+    ignore_errors: true
 
-    - name: Stop and disable Kubernetes services
-      ansible.builtin.systemd:
-        name: '{{ item }}'
-        state: stopped
-        enabled: false
-      loop:
-        - kubelet
-        - containerd
-        - k3s
-        - k3s-agent
-        - kubectl-proxy
-      ignore_errors: true
+  - name: Remove Kubernetes data directories
+    ansible.builtin.file:
+      path: '{{ item }}'
+      state: absent
+    loop:
+      - /etc/kubernetes
+      - /var/lib/kubelet
+      - /var/lib/dockershim
+      - /var/run/kubernetes
+      - /var/lib/cni
+      - /etc/cni
+      - /opt/cni
+      - /var/lib/etcd
+      - /var/lib/etcd-backup
+      - /var/lib/containerd
+      - /run/containerd
+      - /etc/containerd
+      - /etc/cni/net.d
 
-    - name: Remove Kubernetes packages
-      ansible.builtin.apt:
-        name:
-          - kubelet
-          - kubeadm
-          - kubectl
-          - kubernetes-cni
-        state: absent
-        purge: true
-        autoremove: true
-      ignore_errors: true
+  - name: Remove kubeconfig files
+    ansible.builtin.file:
+      path: '{{ item }}'
+      state: absent
+    loop:
+      - /etc/kubernetes/admin.conf
+      - /root/.kube/config
+      - /root/.kube
+      - /etc/rancher/k3s/k3s.yaml
+    ignore_errors: true
 
-    - name: Remove containerd package
-      ansible.builtin.apt:
-        name:
-          - containerd
-          - containerd.io
-          - runc
-        state: absent
-        purge: true
-        autoremove: true
-      ignore_errors: true
+  - name: Remove CNI tunnel interfaces
+    ansible.builtin.shell: |
+      set -o pipefail
+      ip link delete cni0 2>/dev/null || true
+      ip link delete flannel.1 2>/dev/null || true
+      ip link delete calico 2>/dev/null || true
+      ip link delete tunl0 2>/dev/null || true
+      ip link delete vxlan.calico 2>/dev/null || true
+      ip link show 2>/dev/null | awk '/^cali[a-f0-9]+/ {print $2}' | sed 's/://' | xargs -r -n1 ip link delete || true
+    args:
+      executable: /bin/bash
+    ignore_errors: true
 
-    - name: Remove all container images
-      ansible.builtin.shell: |
-        set -o pipefail
-        if command -v crictl >/dev/null 2>&1; then crictl rmi -a || true; fi
-        if command -v ctr >/dev/null 2>&1; then ctr image rm -a || true; fi
-        if command -v docker >/dev/null 2>&1; then docker rmi -f $(docker images -q) || true; fi
-      args:
-        executable: /bin/bash
-      ignore_errors: true
+  - name: Flush iptables / nftables Kubernetes chains
+    ansible.builtin.shell: |
+      set -o pipefail
+      iptables -F 2>/dev/null || true
+      iptables -t nat -F 2>/dev/null || true
+      iptables -t mangle -F 2>/dev/null || true
+      iptables -X 2>/dev/null || true
+      iptables -t nat -X 2>/dev/null || true
+      iptables -t mangle -X 2>/dev/null || true
+      ip6tables -F 2>/dev/null || true
+      ip6tables -t nat -F 2>/dev/null || true
+      ip6tables -t mangle -F 2>/dev/null || true
+      ip6tables -X 2>/dev/null || true
+      ipvsadm --clear 2>/dev/null || true
+    args:
+      executable: /bin/bash
+    ignore_errors: true
 
-    - name: Remove Kubernetes data directories
-      ansible.builtin.file:
-        path: '{{ item }}'
-        state: absent
-      loop:
-        - /etc/kubernetes
-        - /var/lib/kubelet
-        - /var/lib/dockershim
-        - /var/run/kubernetes
-        - /var/lib/cni
-        - /etc/cni
-        - /opt/cni
-        - /var/lib/etcd
-        - /var/lib/etcd-backup
-        - /var/lib/containerd
-        - /run/containerd
-        - /etc/containerd
-        - /etc/cni/net.d
+  - name: Verify Kubernetes binaries are gone
+    ansible.builtin.shell: |
+      set -o pipefail
+      left=''
+      for b in kubeadm kubectl kubelet k3s; do
+        p=$(command -v "$b" 2>/dev/null || true)
+        if [ -n "$p" ]; then left="$left $p"; fi
+      done
+      echo "${left# }"
+    args:
+      executable: /bin/bash
+    register: k8s_leftovers
+    changed_when: false
+    ignore_errors: true
 
-    - name: Remove kubeconfig files
-      ansible.builtin.file:
-        path: '{{ item }}'
-        state: absent
-      loop:
-        - /etc/kubernetes/admin.conf
-        - /root/.kube/config
-        - /root/.kube
-        - /etc/rancher/k3s/k3s.yaml
-      ignore_errors: true
+  - name: Fail if Kubernetes binaries still present
+    ansible.builtin.fail:
+      msg: "Purge incomplete — these binaries are still installed: {{ k8s_leftovers.stdout | trim }}"
+    when: (k8s_leftovers.stdout | default('') | trim) | length > 0
 
-    - name: Remove CNI tunnel interfaces
-      ansible.builtin.shell: |
-        set -o pipefail
-        ip link delete cni0 2>/dev/null || true
-        ip link delete flannel.1 2>/dev/null || true
-        ip link delete calico 2>/dev/null || true
-        ip link delete tunl0 2>/dev/null || true
-        ip link delete vxlan.calico 2>/dev/null || true
-        ip link show 2>/dev/null | awk '/^cali[a-f0-9]+/ {print $2}' | sed 's/://' | xargs -r -n1 ip link delete || true
-      args:
-        executable: /bin/bash
-      ignore_errors: true
+  - name: Show cleanup summary
+    ansible.builtin.debug:
+      msg: "Kubernetes purge completed on {{ inventory_hostname }} (cluster_type={{ cluster_type }}, leftovers='{{ k8s_leftovers.stdout | default('') | trim }}')"
 
-    - name: Flush iptables / nftables Kubernetes chains
-      ansible.builtin.shell: |
-        set -o pipefail
-        iptables -F 2>/dev/null || true
-        iptables -t nat -F 2>/dev/null || true
-        iptables -t mangle -F 2>/dev/null || true
-        iptables -X 2>/dev/null || true
-        iptables -t nat -X 2>/dev/null || true
-        iptables -t mangle -X 2>/dev/null || true
-        ip6tables -F 2>/dev/null || true
-        ip6tables -t nat -F 2>/dev/null || true
-        ip6tables -t mangle -F 2>/dev/null || true
-        ip6tables -X 2>/dev/null || true
-        ipvsadm --clear 2>/dev/null || true
-      args:
-        executable: /bin/bash
-      ignore_errors: true
-
-    - name: Show cleanup summary
-      ansible.builtin.debug:
-        msg: "Kubernetes purge completed on {{ inventory_hostname }} (cluster_type={{ cluster_type }})"
