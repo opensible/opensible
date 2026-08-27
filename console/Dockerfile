@@ -9,10 +9,12 @@ WORKDIR /app
 COPY package.json bun.lock* ./
 RUN bun install --frozen-lockfile || bun install
 
-# Copy source and build
+# Copy source, build scripts, and blueprint definitions
 COPY tsconfig.json vite.config.ts index.html ./
 COPY public ./public
 COPY src ./src
+COPY scripts ./scripts
+COPY IaC/blueprints ./IaC/blueprints
 
 RUN bun run build
 
