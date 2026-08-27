@@ -13,6 +13,7 @@ import type { Blueprint, BlueprintGroup } from "@/lib/blueprints";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { useT } from "@/lib/i18n";
+import { resolveInventoryFiles } from "@/lib/inventory-files";
 import { useProjects } from "@/lib/project";
 
 export const Route = createFileRoute("/infrastructure/blueprints")({
@@ -81,11 +82,12 @@ function BlueprintsPage() {
       if (action === "run-once") {
         const pbId = saved.playbook_id || saved.filename.replace(/\.ya?ml$/i, "");
         try {
+          const inventoryFiles = await resolveInventoryFiles();
           const run = await api<{ executionId?: string; execution_id?: string }>(
             "POST",
             `/api/projects/_current/playbooks/${encodeURIComponent(pbId)}/run`,
             {
-              inventory_files: ["inventory.yml"],
+              inventory_files: inventoryFiles,
               ansible_config: "ansible.cfg",
               play_name: `Blueprint: ${bp.name} [${environment}]`,
               become: true,
