@@ -21,6 +21,7 @@ from utils.project_paths import (
     get_project_inventories_dir,
     get_project_inventory_file,
     get_project_secrets_dir,
+    resolve_inventory_file_path,
 )
 from utils.request_ctx import get_project_id_from_request as _get_pid_raw
 from utils.json_io import safe_log_error
@@ -591,29 +592,11 @@ def api_get_inventory_groups():
             inventories_layout_path = layout.get('inventories', 'inventories')
             
             for file_path_param in selected_files:
-                file_path = None
-                # inventories (, ansible/inventories/)
-                if file_path_param.startswith(f'{inventories_layout_path}/'):
-                    # inventories/prod/hosts.yml ansible/inventories/prod/hosts.yml
-                    # inventories_dir
-                    rel_path = file_path_param[len(inventories_layout_path) + 1:]
-                    file_path = inventories_dir / rel_path
-                elif file_path_param.startswith('inventories/'):
-                    # : inventories/
-                    file_path = project_dir / 'repo' / file_path_param
-                elif file_path_param in ('inventory.yml', 'inventory.yaml', 'hosts.yml', 'hosts.yaml', 'hosts', 'hosts.ini'):
-                    # inventories ( api_get_inventory_hosts), repo
-                    file_path = inventories_dir / file_path_param
-                    if not file_path.exists():
-                        file_path = project_dir / 'repo' / file_path_param
-                elif '/' in file_path_param and not file_path_param.startswith('inventory/'):
-                    # prod/hosts.yml - inventories_dir
-                    file_path = inventories_dir / file_path_param
-                else:
-                    # , inventories_dir
-                    file_path = inventories_dir / file_path_param
-                
-                if file_path and file_path.exists():
+                try:
+                    file_path = resolve_inventory_file_path(project_id, file_path_param, must_exist=True)
+                except ValueError:
+                    file_path = None
+                if file_path:
                     inventory_files_to_use.append(str(file_path))
         else:
             # — inventory inventories ( api_get_inventory_hosts)
@@ -625,14 +608,21 @@ def api_get_inventory_groups():
                     if p.exists():
                         inventory_files_to_use.append(str(p))
                 for inv_file in inventories_dir.rglob('*'):
-                    if inv_file.is_file() and inv_file.name in inventory_names:
-                        rel = inv_file.relative_to(inventories_dir)
-                        if 'group_vars' not in rel.parts and 'host_vars' not in rel.parts:
-                            path_str = str(inv_file)
-                            if path_str not in inventory_files_to_use:
-                                inventory_files_to_use.append(path_str)
+                    if not inv_file.is_file():
+                        continue
+                    rel = inv_file.relative_to(inventories_dir)
+                    if 'group_vars' in rel.parts or 'host_vars' in rel.parts:
+                        continue
+                    # Accept the well-known names *and* any custom-named inventory
+                    # file (e.g. inventories/opensible.yml) so hosts added to a
+                    # custom inventory still show up in target pickers.
+                    if inv_file.name in inventory_names or inv_file.suffix.lower() in ('.yml', '.yaml', '.ini'):
+                        path_str = str(inv_file)
+                        if path_str not in inventory_files_to_use:
+                            inventory_files_to_use.append(path_str)
             if not inventory_files_to_use and project_inventory_file.exists():
                 inventory_files_to_use = [str(project_inventory_file)]
+
         
         # get_inventory_groups 
         groups = get_inventory_groups(inventory_files_to_use) if inventory_files_to_use else {}
@@ -673,26 +663,10 @@ def api_add_inventory_group():
         
         inventory_file = None
         
-        if inventory_file_param:
-            # inventory , 
-            if inventory_file_param.startswith(f'{inventories_layout_path}/'):
-                rel_path = inventory_file_param[len(inventories_layout_path) + 1:]
-                inventory_file = inventories_dir / rel_path
-            elif inventory_file_param.startswith('inventories/'):
-                inventory_file = project_dir / 'repo' / inventory_file_param
-            elif inventory_file_param == 'inventory.yml':
-                inventory_file = inventories_dir / 'inventory.yml'
-            elif '/' in inventory_file_param:
-                if inventory_file_param.startswith('inventories/'):
-                    rel_path = inventory_file_param[len('inventories/'):]
-                    inventory_file = inventories_dir / rel_path
-                else:
-                    inventory_file = inventories_dir / inventory_file_param
-            else:
-                inventory_file = inventories_dir / inventory_file_param
-        else:
-            # , 
-            inventory_file = get_project_inventory_file(project_id)
+        try:
+            inventory_file = resolve_inventory_file_path(project_id, inventory_file_param)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
         
         inventory_file.parent.mkdir(parents=True, exist_ok=True)
         
@@ -769,16 +743,8 @@ def api_delete_inventory_group(group_name):
 
         candidates = []
         if explicit:
-            layout = get_repo_layout(project_id)
-            inv_layout = layout.get('inventories', 'inventories')
-            if explicit.startswith(f'{inv_layout}/'):
-                candidates = [inventories_dir / explicit[len(inv_layout) + 1:]]
-            elif explicit.startswith('inventories/'):
-                candidates = [project_dir / 'repo' / explicit]
-            elif '/' in explicit:
-                candidates = [inventories_dir / explicit]
-            else:
-                candidates = [inventories_dir / explicit]
+            resolved = resolve_inventory_file_path(project_id, explicit)
+            candidates = [resolved] if resolved else []
         else:
             inv_names = {'inventory.yml', 'inventory.yaml', 'hosts.yml', 'hosts.yaml', 'hosts', 'hosts.ini'}
             if inventories_dir.exists():

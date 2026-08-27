@@ -29,6 +29,7 @@ from utils.project_paths import (
     get_project_dir,
     get_project_inventories_dir,
     get_project_inventory_file,
+    resolve_inventory_file_path,
 )
 from utils.yaml_io import create_backup
 from utils.request_ctx import (
@@ -529,7 +530,7 @@ def add_host_to_inventory():
         
         data = request.json or {}
         host_name = data.get('host_name', '').strip()
-        inventory_file = data.get('inventory_file', 'inventory.yml')
+        inventory_file = (data.get('inventory_file') or '').strip()
         group_name = data.get('group_name', 'all')  # , 
         host_ip = data.get('host_ip', '')  # IP 
         vars_file = data.get('vars_file', '')  # vars_file
@@ -540,37 +541,17 @@ def add_host_to_inventory():
         if not re.match(r'^[a-zA-Z0-9._-]+$', host_name):
             return jsonify({'success': False, 'error': 'Host name contains invalid characters'}), 400
         
-        # inventory ( repoLayout)
-        project_dir = get_project_dir(project_id)
-        # inventories_dir repoLayout
-        inventories_dir = get_project_inventories_dir(project_id)
-        layout = get_repo_layout(project_id)
-        inventories_layout_path = layout.get('inventories', 'inventories')
+        # Resolve the target inventory file the same way the readers do, so the
+        # host is appended to the project's existing inventory (which may have a
+        # custom name like inventories/opensible.yml) instead of creating a new
+        # empty inventory.yml the UI never lists.
+        try:
+            file_path = resolve_inventory_file_path(project_id, inventory_file)
+        except ValueError as e:
+            return jsonify({'success': False, 'error': str(e)}), 400
+        if not inventory_file:
+            inventory_file = file_path.name
         
-        # inventories (, ansible/inventories/)
-        if inventory_file.startswith(f'{inventories_layout_path}/'):
-            # inventories/prod/hosts.yml ansible/inventories/prod/hosts.yml
-            # inventories_dir
-            rel_path = inventory_file[len(inventories_layout_path) + 1:]
-            file_path = inventories_dir / rel_path
-        elif inventory_file.startswith('inventories/'):
-            # : inventories/
-            file_path = project_dir / 'repo' / inventory_file
-        elif inventory_file == 'inventory.yml':
-            # inventories: inventories/inventory.yml
-            file_path = inventories_dir / 'inventory.yml'
-        elif '/' in inventory_file:
-            # prod/hosts.yml inventories/inventory.yml - inventories_dir
-            if inventory_file.startswith('inventories/'):
-                # inventories/ inventories_dir
-                rel_path = inventory_file[len('inventories/'):]
-                file_path = inventories_dir / rel_path
-            else:
-                # prod/hosts.yml - inventories_dir
-                file_path = inventories_dir / inventory_file
-        else:
-            # , inventories
-            file_path = inventories_dir / inventory_file
         
         # Use a fresh ruamel.yaml YAML instance to avoid thread-safety issues
         # ("I/O operation on closed file") caused by concurrent requests sharing

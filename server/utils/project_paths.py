@@ -1,8 +1,4 @@
 """Project-directory path helpers.
-
-Extracted from app.py during Phase 2 of the refactor. All helpers read the
-project root from ``app_context.get_projects_dir()``, which app.py populates
-at import time. Behavior and return values are unchanged.
 """
 from __future__ import annotations
 
@@ -151,10 +147,56 @@ def get_project_inventory_file(project_id):
             return root_inventory
 
     if inventories_dir.exists():
-        for inv_file in inventories_dir.rglob('*'):
+        for inv_file in sorted(inventories_dir.rglob('*')):
             if inv_file.is_file() and inv_file.name in inventory_names:
                 rel = inv_file.relative_to(inventories_dir)
                 if 'group_vars' not in rel.parts and 'host_vars' not in rel.parts:
                     return inv_file
+        for inv_file in sorted(inventories_dir.rglob('*')):
+            if not inv_file.is_file():
+                continue
+            if inv_file.suffix.lower() not in ('.yml', '.yaml', '.ini'):
+                continue
+            rel = inv_file.relative_to(inventories_dir)
+            if 'group_vars' in rel.parts or 'host_vars' in rel.parts:
+                continue
+            return inv_file
 
     return inventories_dir / 'inventory.yml'
+
+
+def resolve_inventory_file_path(project_id, file_param, must_exist=False):
+    """Resolve a client-supplied inventory file reference to an on-disk path.
+    """
+    inventories_dir = get_project_inventories_dir(project_id)
+    repo_dir = get_project_dir(project_id) / 'repo'
+
+    if not file_param:
+        return get_project_inventory_file(project_id)
+
+    raw = str(file_param).strip().lstrip('/')
+    while raw.startswith('./'):
+        raw = raw[2:]
+    if '..' in Path(raw).parts:
+        raise ValueError(f'invalid inventory file path: {file_param!r}')
+
+    stripped = raw
+    for prefix in ('IaC/ansible/inventories/', 'ansible/inventories/', 'inventories/'):
+        if stripped.startswith(prefix):
+            stripped = stripped[len(prefix):]
+            break
+
+    candidates = [
+        inventories_dir / stripped,
+        inventories_dir / raw,
+        repo_dir / raw,
+        inventories_dir / Path(raw).name,
+    ]
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+
+    if must_exist:
+        return None
+    return inventories_dir / stripped

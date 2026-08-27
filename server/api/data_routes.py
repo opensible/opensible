@@ -26,6 +26,7 @@ from utils.project_paths import (
     get_project_dir,
     get_project_inventories_dir,
     get_project_inventory_file,
+    resolve_inventory_file_path,
 )
 from utils.yaml_io import (
     yaml_loader,
@@ -512,23 +513,11 @@ def api_get_inventory_hosts():
             inventories_layout_path = layout.get('inventories', 'inventories')
 
             for file_path_param in selected_files:
-                file_path = None
-                if file_path_param.startswith(f'{inventories_layout_path}/'):
-                    rel_path = file_path_param[len(inventories_layout_path) + 1:]
-                    file_path = inventories_dir / rel_path
-                elif file_path_param.startswith('inventories/'):
-                    rel_path = file_path_param[len('inventories/'):]
-                    file_path = inventories_dir / rel_path
-                elif file_path_param in ('inventory.yml', 'inventory.yaml', 'hosts.yml', 'hosts.yaml', 'hosts', 'hosts.ini'):
-                    file_path = inventories_dir / file_path_param
-                    if not file_path.exists():
-                        file_path = project_dir / 'repo' / file_path_param
-                elif '/' in file_path_param and not file_path_param.startswith('inventory/'):
-                    file_path = inventories_dir / file_path_param
-                else:
-                    file_path = inventories_dir / file_path_param
-
-                if file_path and file_path.exists():
+                try:
+                    file_path = resolve_inventory_file_path(project_id, file_path_param, must_exist=True)
+                except ValueError:
+                    file_path = None
+                if file_path:
                     inventory_files_to_use.append(str(file_path))
         else:
             inventories_dir = get_project_inventories_dir(project_id)
@@ -538,13 +527,17 @@ def api_get_inventory_hosts():
                     p = inventories_dir / name
                     if p.exists():
                         inventory_files_to_use.append(str(p))
-                for inv_file in inventories_dir.rglob('*'):
-                    if inv_file.is_file() and inv_file.name in inventory_names:
-                        rel = inv_file.relative_to(inventories_dir)
-                        if 'group_vars' not in rel.parts and 'host_vars' not in rel.parts:
-                            path_str = str(inv_file)
-                            if path_str not in inventory_files_to_use:
-                                inventory_files_to_use.append(path_str)
+                for inv_file in sorted(inventories_dir.rglob('*')):
+                    if not inv_file.is_file():
+                        continue
+                    if not (inv_file.name in inventory_names or inv_file.suffix.lower() in ('.yml', '.yaml', '.ini')):
+                        continue
+                    rel = inv_file.relative_to(inventories_dir)
+                    if 'group_vars' in rel.parts or 'host_vars' in rel.parts:
+                        continue
+                    path_str = str(inv_file)
+                    if path_str not in inventory_files_to_use:
+                        inventory_files_to_use.append(path_str)
             if not inventory_files_to_use and project_inventory_file.exists():
                 inventory_files_to_use = [str(project_inventory_file)]
 
