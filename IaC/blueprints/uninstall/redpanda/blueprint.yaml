@@ -1,19 +1,25 @@
 id: uninstall-redpanda
 name: Uninstall — Redpanda + Console
 group: uninstall
-category: Maintenance
 description: >-
-  Stop redpanda and redpanda-console, purge the Redpanda apt/dnf repo,
-  remove packages, config, data and the redpanda system user.
+  Stop redpanda and redpanda-console, purge the Redpanda apt/dnf repo, remove packages, /etc/redpanda, /var/lib/redpanda
+  data and the redpanda system user.
 logo: https://cdn.simpleicons.org/redpanda/E9165A
-tags: [cleanup, redpanda, kafka-api]
+tags:
+  - cleanup
+  - redpanda
+  - kafka-api
 author: opensible
 stars: 5
+available: true
+templateId: uninstall-stack
+filenameStem: uninstall-redpanda
 entrypoint: playbook.yml
-variables:
+defaults:
   stack: redpanda
   purge_data: true
   remove_packages: true
   flush_iptables: false
   reboot_after: false
   become: true
+category: Maintenance

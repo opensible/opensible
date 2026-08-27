@@ -1,31 +1,51 @@
 id: rabbitmq-cluster
 name: RabbitMQ Cluster
 group: messaging
-category: Message Broker
 description: >-
-  RabbitMQ cluster with management UI, Prometheus metrics and
-  quorum-queue defaults. Installs from distro packages and manages
-  rabbitmq-server via systemd. First node is the seed; the rest join it.
-  Use 3+ nodes for HA quorum queues.
+  RabbitMQ cluster with management UI, Prometheus metrics and quorum-queue defaults. Installs from distro packages and
+  manages rabbitmq-server via systemd. First node is the seed; the rest join it. Use 3+ nodes for HA quorum queues.
 logo: https://cdn.simpleicons.org/rabbitmq/FF6600
-tags: [rabbitmq, amqp, cluster, systemd, quorum-queues]
+tags:
+  - rabbitmq
+  - amqp
+  - cluster
+  - systemd
+  - quorum-queues
 author: opensible
 stars: 34
+available: true
 templateId: rabbitmq-cluster
+filenameStem: rabbitmq-cluster
 entrypoint: playbook.yml
-variables:
+defaults:
   cluster_id: opensible-rabbit
-  erlang_cookie: ""
+  erlang_cookie: ''
+  ssh_user_default: root
+  ssh_port_default: 22
+  nodes:
+    - name: rabbit-1
+      ip: ''
+      ssh_user: ''
+      ssh_port: ''
+    - name: rabbit-2
+      ip: ''
+      ssh_user: ''
+      ssh_port: ''
+    - name: rabbit-3
+      ip: ''
+      ssh_user: ''
+      ssh_port: ''
   amqp_port: 5672
   mgmt_port: 15672
   prometheus_port: 15692
   dist_port: 25672
   epmd_port: 4369
   admin_user: admin
-  admin_password: ""
+  admin_password: ''
   delete_guest_user: true
   default_queue_type: quorum
-  vm_memory_high_watermark: "0.6"
-  disk_free_limit: "2GB"
+  vm_memory_high_watermark: '0.6'
+  disk_free_limit: 2GB
   open_firewall: true
   become: true
+category: Message Broker

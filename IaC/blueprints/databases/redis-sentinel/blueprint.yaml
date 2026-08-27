@@ -1,33 +1,54 @@
 id: redis-sentinel
-name: Redis / Valkey + Sentinel
+name: Redis + Sentinel
 group: databases
-category: Cache & KV
 description: >-
-  Redis (or Valkey) primary/replica cluster with Sentinel for automatic
-  failover. Installed from distro packages and managed by systemd — no
-  Docker, no Bitnami. The first node is the initial primary; the rest
-  are replicas. Every node also runs a Sentinel that monitors the
-  primary and coordinates failover.
+  Redis primary/replica with Sentinel for automatic failover. Distro packages + systemd — no Docker, no Bitnami. First
+  node is the initial primary; add 3+ nodes for real HA.
 logo: https://cdn.simpleicons.org/redis/DC382D
-tags: [redis, valkey, sentinel, ha, systemd, failover]
+tags:
+  - redis
+  - sentinel
+  - ha
+  - systemd
 author: opensible
 stars: 47
 source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/databases/redis-sentinel
-requires:
-  ansible: ">=2.14"
+available: true
+templateId: redis-sentinel
+filenameStem: redis-sentinel-cluster
 entrypoint: playbook.yml
-variables:
+requires:
+  ansible: '>=2.14'
+defaults:
   flavor: redis
   cluster_id: opensible-redis
   primary_name: mymaster
+  bind: 0.0.0.0
   port: 6379
   sentinel_port: 26379
   quorum: 2
   down_after_ms: 5000
   failover_timeout_ms: 10000
   parallel_syncs: 1
+  maxmemory: ''
   maxmemory_policy: noeviction
   appendonly: true
-  bind: 0.0.0.0
+  requirepass: ''
+  ssh_user_default: root
+  ssh_port_default: 22
+  nodes:
+    - name: redis-1
+      ip: ''
+      ssh_user: ''
+      ssh_port: ''
+    - name: redis-2
+      ip: ''
+      ssh_user: ''
+      ssh_port: ''
+    - name: redis-3
+      ip: ''
+      ssh_user: ''
+      ssh_port: ''
   open_firewall: true
   become: true
+category: Cache & KV

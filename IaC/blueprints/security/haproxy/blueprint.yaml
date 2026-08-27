@@ -1,26 +1,40 @@
 id: haproxy-lb
 name: HAProxy Load Balancer
 group: security
-category: Load Balancing
 description: >-
-  HAProxy L4/L7 load balancer on systemd (distro package). Renders a
-  hardened haproxy.cfg with health checks, a protected stats page and
-  optional TLS termination. Enable keepalived to publish a VRRP virtual
-  IP across 2+ nodes for HA.
+  HAProxy L4/L7 load balancer on systemd (distro package). Renders a hardened haproxy.cfg with health checks, a
+  protected stats page and optional TLS termination. Enable keepalived to publish a VRRP virtual IP across 2+ nodes for
+  HA.
 logo: https://cdn.simpleicons.org/haproxy/106DA9
-tags: [haproxy, load-balancer, keepalived, ha, systemd]
+tags:
+  - haproxy
+  - load-balancer
+  - keepalived
+  - ha
+  - systemd
 author: opensible
 stars: 22
+available: true
 templateId: haproxy-lb
+filenameStem: haproxy-lb
 entrypoint: playbook.yml
-variables:
+defaults:
   cluster_id: opensible-haproxy
   mode: http
-  frontend_bind: "0.0.0.0"
+  frontend_bind: 0.0.0.0
   frontend_port: 80
   balance_algorithm: roundrobin
+  backends:
+    - name: app-1
+      ip: ''
+      ssh_user: ''
+      ssh_port: 8080
+    - name: app-2
+      ip: ''
+      ssh_user: ''
+      ssh_port: 8080
   backend_check: true
-  http_check_path: "/"
+  http_check_path: /
   tls_enabled: false
   tls_bind_port: 443
   tls_cert_path: /etc/haproxy/certs/site.pem
@@ -29,15 +43,18 @@ variables:
   stats_port: 8404
   stats_uri: /stats
   stats_user: admin
-  stats_password: ""
+  stats_password: ''
   maxconn: 20000
   timeout_client: 30s
   timeout_server: 30s
   timeout_connect: 5s
+  extra_global: ''
+  extra_defaults: ''
   keepalived_enabled: false
-  vrrp_vip: ""
+  vrrp_vip: ''
   vrrp_interface: eth0
   vrrp_router_id: 51
-  vrrp_password: ""
+  vrrp_password: ''
   open_firewall: true
   become: true
+category: Load Balancing

@@ -1,10 +1,22 @@
 id: uninstall-patroni
 name: Uninstall — PostgreSQL HA (Patroni + etcd)
-templateId: uninstall-stack
+group: uninstall
 description: >-
-  Stop patroni + etcd, kill leftover postgres processes, purge PGDG
-  packages, remove /opt/patroni venv, /etc/patroni, /var/lib/patroni,
-  /var/lib/etcd and /var/lib/postgresql.
+  Stop patroni + etcd, kill leftover postgres processes, purge PGDG packages, remove /opt/patroni venv, /etc/patroni,
+  /var/lib/patroni, /var/lib/etcd and /var/lib/postgresql.
+logo: https://cdn.simpleicons.org/postgresql/4169E1
+tags:
+  - cleanup
+  - postgres
+  - patroni
+  - etcd
+  - ha
+author: opensible
+stars: 3
+available: true
+templateId: uninstall-stack
+filenameStem: uninstall-patroni
+entrypoint: playbook.yml
 defaults:
   stack: patroni
   purge_data: true

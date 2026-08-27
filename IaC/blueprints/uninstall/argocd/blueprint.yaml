@@ -1,13 +1,27 @@
 id: uninstall-argocd
 name: Uninstall — Argo CD (Helm)
+group: uninstall
+description: Run helm uninstall for the Argo CD release, remove argoproj.io CRDs and optionally delete the argocd namespace.
+logo: https://cdn.simpleicons.org/argo/EF7B4D
+tags:
+  - cleanup
+  - argocd
+  - helm
+  - gitops
+author: opensible
+stars: 8
+available: true
 templateId: uninstall-stack
-description: >-
-  Run helm uninstall for the Argo CD release, remove argoproj.io CRDs and
-  optionally delete the argocd namespace.
+filenameStem: uninstall-argocd
+entrypoint: playbook.yml
 defaults:
   stack: argocd
+  purge_data: false
+  remove_packages: false
+  flush_iptables: false
   argocd_namespace: argocd
   argocd_release: argocd
-  kubeconfig: /etc/rancher/k3s/k3s.yaml
+  kubeconfig: ''
   delete_namespace: false
   reboot_after: false
+  become: true

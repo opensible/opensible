@@ -1,22 +1,27 @@
 id: traefik-proxy
 name: Traefik Reverse Proxy / LB
-group: networking
-category: Reverse Proxy
+group: security
 description: >-
-  Traefik v3 reverse proxy on systemd (official GitHub tarball). Hardened
-  static config, file-provider directory for dynamic routes, protected
-  dashboard, Prometheus metrics and optional Let's Encrypt ACME. Deploy
-  as a single instance or as an HA cluster with a keepalived VRRP VIP.
+  Traefik v3 reverse proxy on systemd (official GitHub tarball). Hardened static config, file-provider directory for
+  dynamic routes, protected dashboard, Prometheus metrics and optional Let's Encrypt ACME. Deploy as a single instance
+  or as an HA cluster with a keepalived VRRP virtual IP.
 logo: https://cdn.simpleicons.org/traefikproxy/24A1C1
-tags: [traefik, reverse-proxy, load-balancer, systemd, ha]
+tags:
+  - traefik
+  - reverse-proxy
+  - load-balancer
+  - systemd
+  - ha
 author: opensible
 stars: 19
+available: true
 templateId: traefik-proxy
+filenameStem: traefik-proxy
 entrypoint: playbook.yml
-variables:
+defaults:
   cluster_id: opensible-traefik
   deploy_mode: single
-  traefik_version: "3.2.1"
+  traefik_version: 3.2.1
   http_port: 80
   https_enabled: true
   https_port: 443
@@ -24,19 +29,20 @@ variables:
   dashboard_enabled: true
   dashboard_port: 8080
   dashboard_user: admin
-  dashboard_password: ""
+  dashboard_password: ''
   docker_provider: false
   docker_expose_by_default: false
   file_provider_dir: /etc/traefik/dynamic
   acme_enabled: false
-  acme_email: ""
+  acme_email: ''
   acme_staging: false
   access_log_enabled: true
   metrics_enabled: true
   keepalived_enabled: false
-  vrrp_vip: ""
+  vrrp_vip: ''
   vrrp_interface: eth0
   vrrp_router_id: 52
-  vrrp_password: ""
+  vrrp_password: ''
   open_firewall: true
   become: true
+category: Reverse Proxy

@@ -1,26 +1,44 @@
-id: postgres-patroni
+id: postgres-ha
 name: PostgreSQL HA (Patroni + etcd)
 group: databases
-category: Relational Databases
 description: >-
-  Production-style PostgreSQL HA cluster managed by Patroni with an
-  embedded etcd v3 DCS on every node. PostgreSQL is installed from the
-  PGDG repositories; Patroni runs from a pinned Python venv and is the
-  sole supervisor of postgres (the OS postgresql service is stopped
-  and disabled). The first node becomes the initial leader and the
-  rest are streaming replicas; failover is automatic once at least
-  three nodes are healthy.
+  3-node PostgreSQL HA cluster managed by Patroni with an embedded etcd v3 DCS. Installs PostgreSQL from PGDG, runs
+  Patroni from a pinned Python venv, and manages everything via systemd. First node is the initial leader; use 3+ nodes
+  for real HA.
 logo: https://cdn.simpleicons.org/postgresql/4169E1
-tags: [postgres, patroni, etcd, ha, systemd, replication]
+tags:
+  - postgres
+  - patroni
+  - etcd
+  - ha
+  - systemd
 author: opensible
 stars: 112
 source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/databases/postgres-patroni
-requires:
-  ansible: ">=2.14"
+available: true
+templateId: postgres-patroni
+filenameStem: postgres-patroni-cluster
 entrypoint: playbook.yml
-variables:
+requires:
+  ansible: '>=2.14'
+defaults:
   cluster_id: opensible-pg
-  pg_version: "16"
+  pg_version: '16'
+  ssh_user_default: root
+  ssh_port_default: 22
+  nodes:
+    - name: pg-1
+      ip: ''
+      ssh_user: ''
+      ssh_port: ''
+    - name: pg-2
+      ip: ''
+      ssh_user: ''
+      ssh_port: ''
+    - name: pg-3
+      ip: ''
+      ssh_user: ''
+      ssh_port: ''
   listen_address: 0.0.0.0
   pg_port: 5432
   patroni_rest_port: 8008
@@ -38,3 +56,4 @@ variables:
   patroni_version: 3.3.2
   open_firewall: true
   become: true
+category: Relational Databases

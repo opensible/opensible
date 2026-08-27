@@ -1,10 +1,21 @@
 id: uninstall-haproxy
 name: Uninstall — HAProxy Load Balancer
-templateId: uninstall-stack
+group: uninstall
 description: >-
-  Stop haproxy + keepalived, kill leftover processes, purge packages and
-  remove /etc/haproxy, /var/lib/haproxy, /run/haproxy, /var/log/haproxy*
-  and /etc/keepalived.
+  Stop haproxy + keepalived, kill leftover processes, purge packages and remove /etc/haproxy, /var/lib/haproxy,
+  /run/haproxy, /var/log/haproxy* and /etc/keepalived.
+logo: https://cdn.simpleicons.org/haproxy/106DA9
+tags:
+  - cleanup
+  - haproxy
+  - keepalived
+  - load-balancer
+author: opensible
+stars: 3
+available: true
+templateId: uninstall-stack
+filenameStem: uninstall-haproxy
+entrypoint: playbook.yml
 defaults:
   stack: haproxy
   purge_data: true

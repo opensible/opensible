@@ -1,0 +1,47 @@
+# OpenSible Stack Blueprint groups
+# The order in this file defines the order shown in the console sidebar.
+- id: kubernetes
+  name: Kubernetes
+  description: Reusable blueprints for Kubernetes clusters and workloads.
+  logo: https://cdn.simpleicons.org/kubernetes/326CE5
+
+- id: docker
+  name: Docker & Containers
+  description: Blueprints for container engines and compose-based stacks.
+  logo: https://cdn.simpleicons.org/docker/2496ED
+
+- id: cicd
+  name: CI/CD
+  description: Build, push and deploy container images from Git.
+  logo: https://cdn.simpleicons.org/githubactions/2088FF
+
+- id: databases
+  name: Databases
+  description: Reusable database stacks with backup and monitoring.
+  logo: https://cdn.simpleicons.org/postgresql/4169E1
+
+- id: observability
+  name: Observability
+  description: Metrics, logs and tracing stacks.
+  logo: https://cdn.simpleicons.org/prometheus/E6522C
+
+- id: messaging
+  name: Messaging & Streaming
+  description: Event streaming and message broker stacks.
+  logo: https://cdn.simpleicons.org/apachekafka/231F20
+
+- id: storage
+  name: Storage & Object Store
+  description: S3-compatible object storage and distributed file systems.
+  logo: https://cdn.simpleicons.org/rust/000000
+
+- id: security
+  name: Security & Secrets
+  description: Secret management and hardening blueprints.
+  logo: https://cdn.simpleicons.org/vault/FFEC6E
+
+- id: uninstall
+  name: Uninstall & Cleanup
+  description: Cleanly remove previously-installed stacks from your hosts. Safe to re-run.
+  logo: https://cdn.simpleicons.org/cachet/EF4444
+

@@ -1,0 +1,11 @@
+id: opentelemetry
+name: OpenTelemetry Collector
+group: observability
+description: OTel collector DaemonSet with OTLP receivers and multi-exporter pipeline.
+logo: https://cdn.simpleicons.org/opentelemetry/000000
+tags:
+  - otel
+  - tracing
+stars: 39
+available: false
+entrypoint: playbook.yml

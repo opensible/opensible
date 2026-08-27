@@ -1,10 +1,20 @@
 id: uninstall-rabbitmq
 name: Uninstall — RabbitMQ Cluster
-templateId: uninstall-stack
+group: uninstall
 description: >-
-  Stop rabbitmq-server + epmd, kill leftover beam processes, purge
-  packages, remove /etc/rabbitmq, /var/lib/rabbitmq, /var/log/rabbitmq
-  and the Erlang cookie.
+  Stop rabbitmq-server + epmd, kill leftover beam processes, purge packages, remove /etc/rabbitmq, /var/lib/rabbitmq,
+  /var/log/rabbitmq and the Erlang cookie.
+logo: https://cdn.simpleicons.org/rabbitmq/FF6600
+tags:
+  - cleanup
+  - rabbitmq
+  - amqp
+author: opensible
+stars: 3
+available: true
+templateId: uninstall-stack
+filenameStem: uninstall-rabbitmq
+entrypoint: playbook.yml
 defaults:
   stack: rabbitmq
   purge_data: true

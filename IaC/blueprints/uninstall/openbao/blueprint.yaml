@@ -1,12 +1,25 @@
 id: uninstall-openbao
 name: Uninstall — OpenBao (systemd)
-templateId: uninstall-stack
+group: uninstall
 description: >-
-  Stop openbao.service, purge the OpenBao apt/dnf repo and package, remove
-  /etc/openbao, /opt/openbao, /var/lib/openbao and the openbao system user.
+  Stop openbao.service, purge the OpenBao apt/dnf repo and package, remove /etc/openbao, /opt/openbao, /var/lib/openbao
+  and the openbao system user.
+logo: https://cdn.simpleicons.org/vault/FFEC6E
+tags:
+  - cleanup
+  - openbao
+  - vault
+  - secrets
+author: opensible
+stars: 4
+available: true
+templateId: uninstall-stack
+filenameStem: uninstall-openbao
+entrypoint: playbook.yml
 defaults:
   stack: openbao
   purge_data: true
   remove_packages: true
   flush_iptables: false
   reboot_after: false
+  become: true

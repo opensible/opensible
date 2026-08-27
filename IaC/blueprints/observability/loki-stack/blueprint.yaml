@@ -1,0 +1,11 @@
+id: loki-stack
+name: Loki + Promtail
+group: observability
+description: Log aggregation with Loki and Promtail agents, wired to Grafana.
+logo: https://cdn.simpleicons.org/grafana/F46800
+tags:
+  - loki
+  - logs
+stars: 61
+available: false
+entrypoint: playbook.yml

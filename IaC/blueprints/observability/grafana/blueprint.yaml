@@ -1,26 +1,30 @@
 id: grafana-oss
 name: Grafana OSS
 group: observability
-category: Dashboards
 description: >-
-  Grafana OSS from the official apt/dnf repository on systemd. Admin creds
-  and listen port are injected via a systemd drop-in; can pre-provision a
-  Prometheus / VictoriaMetrics datasource so dashboards work on first boot.
+  Grafana OSS from the official apt/dnf repository on systemd. Admin creds and listen port injected via a systemd
+  drop-in; can pre-provision a Prometheus / VictoriaMetrics datasource so dashboards work on first boot.
 logo: https://cdn.simpleicons.org/grafana/F46800
-tags: [grafana, dashboards, systemd, observability]
+tags:
+  - grafana
+  - dashboards
+  - systemd
 author: opensible
 stars: 41
+available: true
 templateId: grafana-oss
+filenameStem: grafana-oss
 entrypoint: playbook.yml
-variables:
+defaults:
   cluster_id: opensible-grafana
-  grafana_version: "11.3.0"
+  grafana_version: 11.3.0
   listen_port: 3000
   admin_user: admin
-  admin_password: ""
+  admin_password: ''
   anonymous_enabled: false
-  root_url: ""
-  datasource_url: ""
+  root_url: ''
+  datasource_url: ''
   datasource_name: Prometheus
   open_firewall: true
   become: true
+category: Dashboards

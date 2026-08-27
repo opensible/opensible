@@ -1,0 +1,11 @@
+id: mongodb-rs
+name: MongoDB Replica Set
+group: databases
+description: 3-node MongoDB replica set with TLS and rolling backups.
+logo: https://cdn.simpleicons.org/mongodb/47A248
+tags:
+  - mongodb
+  - replica
+stars: 58
+available: false
+entrypoint: playbook.yml

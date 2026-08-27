@@ -1,0 +1,11 @@
+id: cert-manager
+name: cert-manager + Cloudflare
+group: security
+description: Automated TLS with cert-manager and Cloudflare DNS-01 solver.
+logo: https://cdn.simpleicons.org/letsencrypt/003A70
+tags:
+  - tls
+  - cert-manager
+stars: 52
+available: false
+entrypoint: playbook.yml

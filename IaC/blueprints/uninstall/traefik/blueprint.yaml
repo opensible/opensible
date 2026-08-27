@@ -1,10 +1,21 @@
 id: uninstall-traefik
 name: Uninstall — Traefik Reverse Proxy / LB
-templateId: uninstall-stack
+group: uninstall
 description: >-
-  Stop traefik + keepalived, remove the /usr/local/bin/traefik binary and
-  systemd unit, and purge /etc/traefik, /var/lib/traefik, /var/log/traefik
-  and /etc/keepalived.
+  Stop traefik + keepalived, remove the /usr/local/bin/traefik binary and systemd unit, and purge /etc/traefik,
+  /var/lib/traefik, /var/log/traefik and /etc/keepalived.
+logo: https://cdn.simpleicons.org/traefikproxy/24A1C1
+tags:
+  - cleanup
+  - traefik
+  - keepalived
+  - reverse-proxy
+author: opensible
+stars: 3
+available: true
+templateId: uninstall-stack
+filenameStem: uninstall-traefik
+entrypoint: playbook.yml
 defaults:
   stack: traefik
   purge_data: true

@@ -1,17 +1,50 @@
 id: openbao
 name: OpenBao Cluster (Raft HA)
-templateId: openbao-systemd
+group: security
 description: >-
-  HashiCorp Vault-compatible OpenBao on systemd. Installs from pinned official
-  release assets without GitHub API calls, renders /etc/openbao/openbao.hcl
-  with integrated Raft storage and cross-node retry_join for HA. Optional
-  auto-init + unseal on first run.
+  HashiCorp Vault–compatible OpenBao on systemd (no Docker). Installs from pinned official release assets without GitHub
+  API calls, renders /etc/openbao/openbao.hcl with integrated Raft storage, cross-node retry_join for HA, and can
+  auto-init + unseal every node on the first run.
+logo: https://cdn.simpleicons.org/vault/FFEC6E
+tags:
+  - secrets
+  - openbao
+  - vault
+  - raft
+  - systemd
+author: opensible
+stars: 44
+available: true
+templateId: openbao-systemd
+filenameStem: openbao-cluster
+entrypoint: playbook.yml
 defaults:
-  version: "2.6.0"
-  listen_address: "0.0.0.0:8200"
-  storage_backend: raft
-  data_dir: /opt/openbao/data
+  cluster_id: opensible-bao
+  ssh_user_default: root
+  ssh_port_default: 22
+  nodes:
+    - name: bao-1
+      ip: ''
+      ssh_user: ''
+      ssh_port: ''
+    - name: bao-2
+      ip: ''
+      ssh_user: ''
+      ssh_port: ''
+    - name: bao-3
+      ip: ''
+      ssh_user: ''
+      ssh_port: ''
+  version: 2.6.0
+  listen_address: 0.0.0.0:8200
+  cluster_address: ''
+  api_address: ''
   tls_disable: true
+  tls_cert_file: /etc/openbao/tls/tls.crt
+  tls_key_file: /etc/openbao/tls/tls.key
+  storage_backend: raft
+  raft_node_id: '{{ inventory_hostname }}'
+  data_dir: /opt/openbao/data
   ui: true
   disable_mlock: true
   log_level: info
@@ -19,4 +52,3 @@ defaults:
   health_http_enabled: true
   health_http_port: 8280
   become: true
-

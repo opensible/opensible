@@ -1,10 +1,20 @@
 id: uninstall-victoriametrics
 name: Uninstall — VictoriaMetrics (systemd)
-templateId: uninstall-stack
+group: uninstall
 description: >-
-  Stop victoriametrics.service, remove
-  /usr/local/bin/victoria-metrics-prod, /srv/metrics data and the
-  victoriametrics system user.
+  Stop victoriametrics.service, remove /usr/local/bin/victoria-metrics-prod, /srv/metrics data and the victoriametrics
+  system user.
+logo: https://cdn.simpleicons.org/victoriametrics/621773
+tags:
+  - cleanup
+  - victoriametrics
+  - metrics
+author: opensible
+stars: 3
+available: true
+templateId: uninstall-stack
+filenameStem: uninstall-victoriametrics
+entrypoint: playbook.yml
 defaults:
   stack: victoriametrics
   purge_data: true

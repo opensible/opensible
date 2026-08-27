@@ -1,0 +1,48 @@
+id: istio-base
+name: Istio Service Mesh
+group: kubernetes
+description: >-
+  Install Istio via the official istio-helm charts: base + istiod control plane in the istio-system namespace. Deploys
+  sidecar-injection ready mesh; add gateways separately.
+logo: https://cdn.simpleicons.org/istio/466BB0
+tags:
+  - service-mesh
+  - istio
+  - helm
+  - k8s
+author: opensible
+stars: 88
+available: true
+templateId: k8s-manifests
+filenameStem: istio-service-mesh
+entrypoint: playbook.yml
+defaults:
+  action: helm
+  helm_release: istiod
+  helm_chart: istio/istiod
+  helm_repo_name: istio
+  helm_repo_url: https://istio-release.storage.googleapis.com/charts
+  helm_version: ''
+  namespace: istio-system
+  create_namespace: true
+  helm_wait: true
+  kubeconfig: ''
+  helm_values: |
+    # Istio control plane values
+    global:
+      proxy:
+        resources:
+          requests:
+            cpu: 100m
+            memory: 128Mi
+    pilot:
+      autoscaleEnabled: true
+      autoscaleMin: 1
+      autoscaleMax: 3
+      resources:
+        requests:
+          cpu: 200m
+          memory: 256Mi
+    meshConfig:
+      accessLogFile: /dev/stdout
+      enableTracing: false
