@@ -41,16 +41,19 @@ function BlueprintLogo({
 export function StackBlueprintsPanel({
   search = "",
   onSelect,
+  groups: groupsInput,
 }: {
   search?: string;
   onSelect?: (blueprint: Blueprint, group: BlueprintGroup) => void;
+  groups?: BlueprintGroup[];
 } = {}) {
   const q = search;
+  const source = groupsInput ?? BLUEPRINT_GROUPS;
 
   const groups = useMemo(() => {
     const s = q.trim().toLowerCase();
-    if (!s) return BLUEPRINT_GROUPS;
-    return BLUEPRINT_GROUPS.map((g) => ({
+    if (!s) return source;
+    return source.map((g) => ({
       ...g,
       blueprints: g.blueprints.filter(
         (b) =>
@@ -60,7 +63,8 @@ export function StackBlueprintsPanel({
           g.name.toLowerCase().includes(s)
       ),
     })).filter((g) => g.blueprints.length > 0);
-  }, [q]);
+  }, [q, source]);
+
 
   return (
     <div className="space-y-8">
