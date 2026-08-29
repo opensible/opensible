@@ -1,28 +1,28 @@
-id: traefik-proxy
-name: Traefik Reverse Proxy / LB
-group: security
+id: traefik-proxy-docker
+name: Traefik Reverse Proxy (Docker provider)
+group: docker
 description: >-
-  Traefik v3 reverse proxy on systemd (official GitHub tarball). Hardened static config, file-provider directory for
-  dynamic routes, protected dashboard, Prometheus metrics and optional Let's Encrypt ACME. Deploy as a single instance
-  or as an HA cluster with a keepalived VRRP virtual IP.
+  Traefik v3 on systemd with the Docker provider enabled — auto-discovers containers on the host's Docker socket via
+  `traefik.enable=true` labels, exposes the protected dashboard, Prometheus metrics and optional Let's Encrypt ACME.
+  Deploy as a single node or as an HA cluster with a keepalived VRRP virtual IP.
 logo: https://cdn.simpleicons.org/traefikproxy/24A1C1
 tags:
   - traefik
   - reverse-proxy
-  - load-balancer
+  - docker
+  - tls
   - systemd
-  - ha
 author: opensible
-stars: 19
+stars: 63
 source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/networking/traefik
 available: true
 templateId: traefik-proxy
-filenameStem: traefik-proxy
-entrypoint: playbook.yml
+filenameStem: traefik-proxy-docker
+entrypoint: ../../networking/traefik/playbook.yml
 requires:
   ansible: '>=2.14'
 defaults:
-  cluster_id: opensible-traefik
+  cluster_id: opensible-traefik-docker
   deploy_mode: single
   traefik_version: 3.2.1
   http_port: 80
@@ -33,7 +33,7 @@ defaults:
   dashboard_port: 8080
   dashboard_user: admin
   dashboard_password: ''
-  docker_provider: false
+  docker_provider: true
   docker_expose_by_default: false
   file_provider_dir: /etc/traefik/dynamic
   acme_enabled: false
@@ -52,7 +52,7 @@ formSchema:
   - key: cluster_id
     label: Deployment name
     type: text
-    default: opensible-traefik
+    default: opensible-traefik-docker
     group: Basics
     help: Used for filenames, config comments and derived secrets.
   - key: deploy_mode
@@ -62,7 +62,7 @@ formSchema:
     group: Basics
     options:
       - value: single
-        label: Single instance
+        label: Single node
       - value: cluster
         label: HA / Cluster (keepalived VRRP VIP)
   - key: traefik_version
@@ -70,7 +70,23 @@ formSchema:
     type: text
     default: 3.2.1
     group: Basics
-    help: Any release tag on github.com/traefik/traefik without the leading "v".
+  - key: docker_provider
+    label: Enable Docker provider
+    type: bool
+    default: true
+    group: Docker
+    help: Watches /var/run/docker.sock; the run fails early if Docker is not installed.
+  - key: docker_expose_by_default
+    label: Docker exposedByDefault
+    type: bool
+    default: false
+    group: Docker
+    help: Off = only containers labelled traefik.enable=true are routed.
+  - key: file_provider_dir
+    label: File provider directory
+    type: text
+    default: /etc/traefik/dynamic
+    group: Docker
   - key: http_port
     label: HTTP entrypoint port (web)
     type: number
@@ -112,22 +128,6 @@ formSchema:
     default: ''
     group: Dashboard
     help: Leave blank to derive a stable password from the deployment name (printed in the run summary).
-  - key: docker_provider
-    label: Enable Docker provider
-    type: bool
-    default: false
-    group: Providers
-    help: Requires Docker on the target host; watches containers labelled traefik.enable=true.
-  - key: docker_expose_by_default
-    label: Docker exposedByDefault
-    type: bool
-    default: false
-    group: Providers
-  - key: file_provider_dir
-    label: File provider directory
-    type: text
-    default: /etc/traefik/dynamic
-    group: Providers
   - key: acme_enabled
     label: Enable Let's Encrypt (HTTP-01)
     type: bool
@@ -149,7 +149,6 @@ formSchema:
     type: bool
     default: false
     group: HA / Cluster
-    help: Cluster mode only. First host becomes MASTER, the rest BACKUP.
   - key: vrrp_vip
     label: Virtual IP (CIDR)
     type: text
@@ -171,7 +170,6 @@ formSchema:
     type: text
     default: ''
     group: HA / Cluster
-    help: Leave blank to derive a stable password from the deployment name.
   - key: access_log_enabled
     label: Enable access log
     type: bool

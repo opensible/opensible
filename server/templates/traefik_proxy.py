@@ -315,9 +315,22 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
             "      basicAuth:",
             "        users:",
             f"          - \"{_htpasswd_bcrypt_expr(dashboard_user, dashboard_password)}\"",
+            "    dashboard-redirect:",
+            "      redirectRegex:",
+            "        regex: \"^(https?)://([^/]+)/(dashboard)?$\"",
+            "        replacement: \"${1}://${2}/dashboard/\"",
+            "        permanent: false",
             "  routers:",
+            "    dashboard-redirect:",
+            "      rule: \"Path(`/`) || Path(`/dashboard`)\"",
+            "      priority: 100",
+            "      entryPoints:",
+            "        - traefik",
+            "      service: noop@internal",
+            "      middlewares:",
+            "        - dashboard-redirect",
             "    dashboard:",
-            "      rule: \"PathPrefix(`/api`) || PathPrefix(`/dashboard`)\"",
+            "      rule: \"PathPrefix(`/api`) || PathPrefix(`/dashboard/`)\"",
             "      entryPoints:",
             "        - traefik",
             "      service: api@internal",
@@ -325,6 +338,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
             "        - dashboard-auth",
             "",
         ])
+
 
     # -------------------------------------------------------------- #
     # Systemd unit
@@ -335,11 +349,13 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
         "Documentation=https://doc.traefik.io/traefik/",
         "After=network-online.target",
         "Wants=network-online.target",
+        *(["After=docker.service", "Wants=docker.service"] if docker_provider else []),
         "",
         "[Service]",
         "Type=notify",
         "User=traefik",
         "Group=traefik",
+        *(["SupplementaryGroups=docker"] if docker_provider else []),
         "ExecStart=/usr/local/bin/traefik --configFile=/etc/traefik/traefik.yml",
         "Restart=on-failure",
         "RestartSec=5s",
@@ -355,6 +371,7 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
         "WantedBy=multi-user.target",
         "",
     ])
+
 
     # -------------------------------------------------------------- #
     # Ansible plays
@@ -436,6 +453,27 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
         "        owner: traefik",
         "        group: traefik",
         "        mode: '0750'",
+        *([
+            "    - name: Verify Docker socket is present (Docker provider)",
+            "      ansible.builtin.stat:",
+            "        path: /var/run/docker.sock",
+            "      register: _tr_docker_sock",
+            "    - name: Fail early when Docker is missing (Docker provider)",
+            "      when: not _tr_docker_sock.stat.exists",
+            "      ansible.builtin.fail:",
+            "        msg: >-",
+            "          The Docker provider is enabled but /var/run/docker.sock was not found on",
+            "          {{ inventory_hostname }}. Deploy the Docker Engine blueprint first, or disable",
+            "          the Docker provider.",
+            "    - name: Add traefik user to the docker group (socket access)",
+            "      ansible.builtin.user:",
+            "        name: traefik",
+            "        groups: docker",
+            "        append: true",
+            "      notify: Restart traefik",
+        ] if docker_provider else []),
+
+
 
         # ---- detect architecture + download ----
         "    - name: Detect Traefik download architecture",
@@ -495,11 +533,12 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
             "      register: _traefik_dashboard_htpasswd",
             "      changed_when: false",
             "      no_log: true",
-            "    - name: Extract bcrypt digest (strip user: prefix)",
+            "    - name: Extract bcrypt digest from htpasswd output",
             "      ansible.builtin.set_fact:",
             "        _traefik_dashboard_hash:",
-            "          stdout: \"{{ (_traefik_dashboard_htpasswd.stdout.split(':',1)[1]) | replace('$','$$') }}\"",
+            "          stdout: \"{{ _traefik_dashboard_htpasswd.stdout.split(':', 1)[1] | trim }}\"",
             "      no_log: true",
+
         ]
 
     parts += [
