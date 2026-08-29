@@ -1,0 +1,11 @@
+id: portainer-ce
+name: Portainer CE
+group: docker
+description: Deploy Portainer CE for container management across nodes.
+logo: https://cdn.simpleicons.org/portainer/13BEF9
+tags:
+  - portainer
+  - ui
+stars: 41
+available: false
+entrypoint: playbook.yml

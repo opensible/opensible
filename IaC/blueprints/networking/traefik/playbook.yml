@@ -1,0 +1,362 @@
+---
+# Traefik v3 reverse proxy / load balancer on systemd.
+# Ready-to-run standalone playbook (same behaviour as the traefik-proxy template).
+# Override any variable below with -e or vars.example.yml.
+- name: Deploy Traefik reverse proxy / load balancer
+  hosts: "{{ traefik_hosts | default('all') }}"
+  become: true
+  gather_facts: true
+  vars:
+    cluster_id: opensible-traefik
+    traefik_version: 3.2.1
+    http_port: 80
+    https_enabled: true
+    https_port: 443
+    http_to_https_redirect: true
+    dashboard_enabled: true
+    dashboard_port: 8080
+    dashboard_user: admin
+    dashboard_password: change-me-please
+    docker_provider: false
+    docker_expose_by_default: false
+    file_provider_dir: /etc/traefik/dynamic
+    acme_enabled: false
+    acme_email: ''
+    acme_staging: false
+    access_log_enabled: true
+    metrics_enabled: true
+    open_firewall: true
+
+  tasks:
+    - name: Install prerequisite packages (Debian/Ubuntu)
+      when: ansible_os_family == 'Debian'
+      ansible.builtin.apt:
+        name: [curl, ca-certificates, tar, openssl, apache2-utils]
+        state: present
+        update_cache: true
+        cache_valid_time: 300
+        install_recommends: false
+
+    - name: Install prerequisite packages (RHEL/Rocky/Alma)
+      when: ansible_os_family == 'RedHat'
+      ansible.builtin.dnf:
+        name: [curl, ca-certificates, tar, openssl, httpd-tools]
+        state: present
+
+    - name: Ensure traefik group exists
+      ansible.builtin.group:
+        name: traefik
+        system: true
+        state: present
+
+    - name: Ensure traefik system user exists
+      ansible.builtin.user:
+        name: traefik
+        group: traefik
+        system: true
+        shell: /usr/sbin/nologin
+        home: /var/lib/traefik
+        create_home: true
+        state: present
+
+    - name: Ensure traefik directories exist
+      loop:
+        - /etc/traefik
+        - "{{ file_provider_dir }}"
+        - /var/lib/traefik
+        - /var/log/traefik
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: traefik
+        group: traefik
+        mode: '0750'
+
+    - name: Verify Docker socket is present (Docker provider)
+      when: docker_provider | bool
+      ansible.builtin.stat:
+        path: /var/run/docker.sock
+      register: _tr_docker_sock
+
+    - name: Fail early when Docker is missing (Docker provider)
+      when: (docker_provider | bool) and not (_tr_docker_sock.stat.exists | default(false))
+      ansible.builtin.fail:
+        msg: >-
+          docker_provider is enabled but /var/run/docker.sock was not found on
+          {{ inventory_hostname }}. Install the Docker Engine first or set
+          docker_provider=false.
+
+    - name: Add traefik user to the docker group (socket access)
+      when: docker_provider | bool
+      ansible.builtin.user:
+        name: traefik
+        groups: docker
+        append: true
+      notify: Restart traefik
+
+    - name: Detect Traefik download architecture
+      ansible.builtin.set_fact:
+        _tr_arch: >-
+          {{ 'arm64' if ansible_architecture in ['aarch64','arm64']
+             else ('armv7' if ansible_architecture.startswith('armv7')
+             else 'amd64') }}
+
+    - name: Check installed Traefik version
+      ansible.builtin.command: /usr/local/bin/traefik version
+      register: _tr_installed
+      changed_when: false
+      failed_when: false
+
+    - name: Download Traefik release tarball
+      when: _tr_installed.rc != 0 or (traefik_version not in (_tr_installed.stdout | default('')))
+      ansible.builtin.get_url:
+        url: "https://github.com/traefik/traefik/releases/download/v{{ traefik_version }}/traefik_v{{ traefik_version }}_linux_{{ _tr_arch }}.tar.gz"
+        dest: "/tmp/traefik_{{ traefik_version }}_{{ _tr_arch }}.tar.gz"
+        mode: '0644'
+        timeout: 60
+      register: _tr_dl
+      retries: 3
+      delay: 5
+      until: _tr_dl is succeeded
+
+    - name: Unpack Traefik binary to /usr/local/bin
+      when: _tr_installed.rc != 0 or (traefik_version not in (_tr_installed.stdout | default('')))
+      ansible.builtin.unarchive:
+        src: "/tmp/traefik_{{ traefik_version }}_{{ _tr_arch }}.tar.gz"
+        dest: /usr/local/bin
+        remote_src: true
+        include: [traefik]
+        mode: '0755'
+        owner: root
+        group: root
+      notify: Restart traefik
+
+    - name: Ensure /etc/traefik/acme.json exists with strict perms
+      when: acme_enabled | bool
+      ansible.builtin.file:
+        path: /etc/traefik/acme.json
+        state: touch
+        owner: traefik
+        group: traefik
+        mode: '0600'
+      changed_when: false
+
+    - name: Generate bcrypt hash for the dashboard user
+      when: dashboard_enabled | bool
+      ansible.builtin.command: >-
+        htpasswd -nbB -C 10 {{ dashboard_user }} {{ dashboard_password }}
+      register: _tr_htpasswd
+      changed_when: false
+      no_log: true
+
+    - name: Write /etc/traefik/traefik.yml (static config)
+      ansible.builtin.copy:
+        dest: /etc/traefik/traefik.yml
+        owner: traefik
+        group: traefik
+        mode: '0640'
+        content: |
+          # Managed by OpenSible — deployment: {{ cluster_id }}
+          global:
+            checkNewVersion: false
+            sendAnonymousUsage: false
+
+          log:
+            level: INFO
+            filePath: /var/log/traefik/traefik.log
+          {% if access_log_enabled | bool %}
+
+          accessLog:
+            filePath: /var/log/traefik/access.log
+            bufferingSize: 100
+          {% endif %}
+
+          entryPoints:
+            web:
+              address: ":{{ http_port }}"
+          {% if (https_enabled | bool) and (http_to_https_redirect | bool) %}
+              http:
+                redirections:
+                  entryPoint:
+                    to: websecure
+                    scheme: https
+                    permanent: true
+          {% endif %}
+          {% if https_enabled | bool %}
+            websecure:
+              address: ":{{ https_port }}"
+          {% if acme_enabled | bool %}
+              http:
+                tls:
+                  certResolver: le
+          {% endif %}
+          {% endif %}
+          {% if (dashboard_enabled | bool) or (metrics_enabled | bool) %}
+            traefik:
+              address: ":{{ dashboard_port }}"
+          {% endif %}
+          {% if dashboard_enabled | bool %}
+
+          api:
+            dashboard: true
+            insecure: false
+          {% endif %}
+          {% if metrics_enabled | bool %}
+
+          metrics:
+            prometheus:
+              entryPoint: traefik
+              addEntryPointsLabels: true
+              addServicesLabels: true
+          {% endif %}
+
+          providers:
+            file:
+              directory: {{ file_provider_dir }}
+              watch: true
+          {% if docker_provider | bool %}
+            docker:
+              endpoint: "unix:///var/run/docker.sock"
+              exposedByDefault: {{ 'true' if (docker_expose_by_default | bool) else 'false' }}
+              watch: true
+          {% endif %}
+          {% if acme_enabled | bool %}
+
+          certificatesResolvers:
+            le:
+              acme:
+                email: {{ acme_email | default('admin@example.com', true) }}
+                storage: /etc/traefik/acme.json
+                caServer: {{ 'https://acme-staging-v02.api.letsencrypt.org/directory' if (acme_staging | bool) else 'https://acme-v02.api.letsencrypt.org/directory' }}
+                httpChallenge:
+                  entryPoint: web
+          {% endif %}
+      notify: Restart traefik
+
+    - name: Write dashboard basic-auth dynamic config
+      when: dashboard_enabled | bool
+      ansible.builtin.copy:
+        dest: "{{ file_provider_dir }}/dashboard-auth.yml"
+        owner: traefik
+        group: traefik
+        mode: '0640'
+        content: |
+          # Managed by OpenSible — Traefik dashboard middleware + router
+          http:
+            middlewares:
+              dashboard-auth:
+                basicAuth:
+                  users:
+                    - "{{ dashboard_user }}:{{ _tr_htpasswd.stdout.split(':', 1)[1] | trim }}"
+              dashboard-redirect:
+                redirectRegex:
+                  regex: "^(https?)://([^/]+)/(dashboard)?$"
+                  replacement: "${1}://${2}/dashboard/"
+                  permanent: false
+            routers:
+              dashboard-redirect:
+                rule: "Path(`/`) || Path(`/dashboard`)"
+                priority: 100
+                entryPoints:
+                  - traefik
+                service: noop@internal
+                middlewares:
+                  - dashboard-redirect
+              dashboard:
+                rule: "PathPrefix(`/api`) || PathPrefix(`/dashboard/`)"
+                entryPoints:
+                  - traefik
+                service: api@internal
+                middlewares:
+                  - dashboard-auth
+
+      no_log: true
+
+    - name: Install traefik systemd unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/traefik.service
+        owner: root
+        group: root
+        mode: '0644'
+        content: |
+          [Unit]
+          Description=Traefik reverse proxy / load balancer
+          Documentation=https://doc.traefik.io/traefik/
+          After=network-online.target
+          Wants=network-online.target
+          {% if docker_provider | bool %}
+          After=docker.service
+          Wants=docker.service
+          {% endif %}
+
+          [Service]
+          Type=notify
+          User=traefik
+          Group=traefik
+          {% if docker_provider | bool %}
+          SupplementaryGroups=docker
+          {% endif %}
+          ExecStart=/usr/local/bin/traefik --configFile=/etc/traefik/traefik.yml
+          Restart=on-failure
+          RestartSec=5s
+          LimitNOFILE=1048576
+          AmbientCapabilities=CAP_NET_BIND_SERVICE
+          CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+          NoNewPrivileges=true
+          ProtectSystem=full
+          ProtectHome=true
+          ReadWritePaths=/etc/traefik /var/log/traefik /var/lib/traefik
+
+          [Install]
+          WantedBy=multi-user.target
+      notify: Restart traefik
+
+    - name: Enable + start traefik
+      ansible.builtin.systemd:
+        name: traefik
+        state: started
+        enabled: true
+        daemon_reload: true
+
+    - name: Open Traefik ports (ufw)
+      when: (open_firewall | bool) and ansible_os_family == 'Debian'
+      ansible.builtin.shell: |
+        set +e
+        command -v ufw >/dev/null 2>&1 || exit 0
+        ufw status 2>/dev/null | grep -q 'Status: active' || exit 0
+        ufw allow {{ http_port }}/tcp 2>/dev/null || true
+        {% if https_enabled | bool %}ufw allow {{ https_port }}/tcp 2>/dev/null || true{% endif %}
+        {% if (dashboard_enabled | bool) or (metrics_enabled | bool) %}ufw allow {{ dashboard_port }}/tcp 2>/dev/null || true{% endif %}
+        exit 0
+      changed_when: false
+
+    - name: Open Traefik ports (firewalld)
+      when: (open_firewall | bool) and ansible_os_family == 'RedHat'
+      ansible.builtin.shell: |
+        set +e
+        command -v firewall-cmd >/dev/null 2>&1 || exit 0
+        systemctl is-active --quiet firewalld || exit 0
+        firewall-cmd --permanent --add-port={{ http_port }}/tcp 2>/dev/null || true
+        {% if https_enabled | bool %}firewall-cmd --permanent --add-port={{ https_port }}/tcp 2>/dev/null || true{% endif %}
+        {% if (dashboard_enabled | bool) or (metrics_enabled | bool) %}firewall-cmd --permanent --add-port={{ dashboard_port }}/tcp 2>/dev/null || true{% endif %}
+        firewall-cmd --reload 2>/dev/null || true
+        exit 0
+      changed_when: false
+
+    - name: Traefik endpoint summary
+      run_once: true
+      ansible.builtin.debug:
+        msg: |
+          Traefik deployed: {{ cluster_id }} (v{{ traefik_version }})
+          HTTP:      http://{{ inventory_hostname }}:{{ http_port }}
+          HTTPS:     {{ ('https://' ~ inventory_hostname ~ ':' ~ https_port) if (https_enabled | bool) else 'disabled' }}
+          Dashboard: {{ ('http://' ~ inventory_hostname ~ ':' ~ dashboard_port ~ '/dashboard/ (user ' ~ dashboard_user ~ ')') if (dashboard_enabled | bool) else 'disabled' }}
+          Metrics:   {{ ('http://' ~ inventory_hostname ~ ':' ~ dashboard_port ~ '/metrics') if (metrics_enabled | bool) else 'disabled' }}
+          Dynamic config directory: {{ file_provider_dir }}
+
+  handlers:
+    - name: Restart traefik
+      ansible.builtin.systemd:
+        name: traefik
+        state: restarted
+        daemon_reload: true

@@ -1,12 +1,23 @@
 id: uninstall-docker
 name: Uninstall — Docker Engine
-templateId: uninstall-stack
+group: uninstall
 description: >-
-  Stop docker + containerd, remove all containers, purge docker-ce packages
-  and delete /var/lib/docker & /var/lib/containerd.
+  Stop docker + containerd, remove all containers, purge docker-ce packages and delete /var/lib/docker &
+  /var/lib/containerd.
+logo: https://cdn.simpleicons.org/docker/2496ED
+tags:
+  - cleanup
+  - docker
+author: opensible
+stars: 9
+available: true
+templateId: uninstall-stack
+filenameStem: uninstall-docker
+entrypoint: playbook.yml
 defaults:
   stack: docker
   purge_data: true
   remove_packages: true
   flush_iptables: false
   reboot_after: false
+  become: true

@@ -1,0 +1,47 @@
+id: kuma-control-plane
+name: Kuma Service Mesh (kuma.io)
+group: kubernetes
+description: >-
+  Envoy-based, universal service mesh from kuma.io. Deploys the kuma control plane via the official Helm chart into the
+  kuma-system namespace in standalone mode.
+logo: https://cdn.simpleicons.org/kuma/3070E8
+tags:
+  - service-mesh
+  - kuma
+  - envoy
+  - helm
+  - k8s
+author: opensible
+stars: 41
+available: true
+templateId: k8s-manifests
+filenameStem: kuma-service-mesh
+entrypoint: playbook.yml
+defaults:
+  action: helm
+  helm_release: kuma
+  helm_chart: kuma/kuma
+  helm_repo_name: kuma
+  helm_repo_url: https://kumahq.github.io/charts
+  helm_version: ''
+  namespace: kuma-system
+  create_namespace: true
+  helm_wait: true
+  kubeconfig: ''
+  helm_values: |
+    controlPlane:
+      mode: standalone
+      replicas: 1
+      resources:
+        requests:
+          cpu: 100m
+          memory: 256Mi
+      tls:
+        general:
+          secretName: ""
+      envVars:
+        KUMA_STORE_UNSAFE_DELETE: "false"
+    cni:
+      enabled: false
+    ingress:
+      enabled: false

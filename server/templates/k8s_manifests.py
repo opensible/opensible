@@ -216,8 +216,9 @@ TEMPLATE = {
             "name": "kubeconfig",
             "label": "KUBECONFIG path on target host",
             "type": "string",
-            "default": "/etc/rancher/k3s/k3s.yaml",
-            "help": "Used for all kubectl/helm commands. Common values: /etc/rancher/k3s/k3s.yaml (k3s), /root/.kube/config, ~/.kube/config",
+            "default": "",
+            "help": "Leave empty to auto-detect (kubeadm /etc/kubernetes/admin.conf, ~/.kube/config, k3s /etc/rancher/k3s/k3s.yaml). Or set an explicit path.",
+
         },
         {
             "name": "kube_context",
@@ -368,16 +369,84 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
         repo_url = values.get("helm_repo_url") or ""
         version = values.get("helm_version") or ""
         vals = values.get("helm_values") or ""
-        wait_flag = " --wait" if values.get("helm_wait", True) else ""
+        wait_flag = " --wait --timeout 15m" if values.get("helm_wait", True) else ""
         ver_flag = f" --version {version}" if version else ""
         create_ns = " --create-namespace" if values.get("create_namespace") else ""
+        kube_ctx = values.get("kube_context") or ""
+        hctx = f" --kube-context {kube_ctx}" if kube_ctx else ""
+        kubeconfig = values.get("kubeconfig") or ""
 
+        tasks += [
+            "    - name: Ensure helm is installed",
+            "      ansible.builtin.shell: |",
+            "        set -e",
+            "        if command -v helm >/dev/null 2>&1; then",
+            "          echo present",
+            "          exit 0",
+            "        fi",
+            "        curl -fsSL https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash",
+            "      args:",
+            "        executable: /bin/bash",
+            "      environment:",
+            "        PATH: \"/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin\"",
+            "      register: helm_bootstrap",
+            "      changed_when: \"'present' not in helm_bootstrap.stdout\"",
+            "    - name: Ensure staging dir",
+            "      ansible.builtin.file:",
+            "        path: /tmp/opensible-k8s",
+            "        state: directory",
+            "        mode: '0755'",
+            "    - name: Resolve kubeconfig path",
+            "      ansible.builtin.shell: |",
+            "        set -e",
+            "        RAW_KUBECONFIG=\"$OPENSIBLE_KUBECONFIG\"",
+            "        HOME_DIR=$(getent passwd \"$(id -u)\" | cut -d: -f6)",
+            "        HOME_DIR=${HOME_DIR:-$HOME}",
+            "        if [ -z \"$RAW_KUBECONFIG\" ]; then",
+            "          for CANDIDATE in \"${HOME_DIR}/.kube/config\" /etc/kubernetes/admin.conf /root/.kube/config /etc/rancher/k3s/k3s.yaml; do",
+            "            if [ -r \"$CANDIDATE\" ]; then",
+            "              printf '%s\\n' \"$CANDIDATE\"",
+            "              exit 0",
+            "            fi",
+            "          done",
+            "          echo \"No readable kubeconfig found (checked ~/.kube/config, /etc/kubernetes/admin.conf, /root/.kube/config, /etc/rancher/k3s/k3s.yaml). Set the KUBECONFIG path in the stack settings.\" >&2",
+            "          exit 1",
+            "        fi",
+            "        if [[ \"$RAW_KUBECONFIG\" == '~/'* ]]; then",
+            "          RESOLVED_KUBECONFIG=\"${HOME_DIR}/${RAW_KUBECONFIG:2}\"",
+            "        elif [[ \"$RAW_KUBECONFIG\" == '~' ]]; then",
+            "          RESOLVED_KUBECONFIG=\"$HOME_DIR\"",
+            "        else",
+            "          RESOLVED_KUBECONFIG=\"$RAW_KUBECONFIG\"",
+            "        fi",
+            "        if [ ! -r \"$RESOLVED_KUBECONFIG\" ]; then",
+            "          echo \"Kubeconfig is not readable: $RESOLVED_KUBECONFIG. For kubeadm use /etc/kubernetes/admin.conf or /root/.kube/config; for k3s use /etc/rancher/k3s/k3s.yaml.\" >&2",
+            "          exit 1",
+            "        fi",
+            "        printf '%s\\n' \"$RESOLVED_KUBECONFIG\"",
+
+            "      args:",
+            "        executable: /bin/bash",
+            "      environment:",
+            f"        OPENSIBLE_KUBECONFIG: {yaml_str(kubeconfig)}",
+            "      register: resolved_kubeconfig",
+            "      changed_when: false",
+            "    - name: Validate Kubernetes cluster access",
+            "      ansible.builtin.shell: |",
+            f"        helm list --all-namespaces{hctx} >/dev/null",
+            "      environment:",
+            "        PATH: \"/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin\"",
+            "        KUBECONFIG: \"{{ resolved_kubeconfig.stdout }}\"",
+            "      changed_when: false",
+        ]
         if repo_url and repo_name:
             tasks += [
                 "    - name: Add helm repo",
                 "      ansible.builtin.shell: |",
                 f"        helm repo add {repo_name} {repo_url} || true",
                 "        helm repo update",
+                "      environment:",
+                "        PATH: \"/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin\"",
             ]
         tasks += [
             "    - name: Write values.yaml",
@@ -388,12 +457,16 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
             indent_block(vals, "          "),
             "    - name: helm upgrade --install",
             "      ansible.builtin.shell: |",
-            f"        helm{ctx} upgrade --install {release} {chart}{ver_flag}{ns}{create_ns}{wait_flag} -f /tmp/opensible-k8s/values-{slugify(release, 'release')}.yaml",
+            f"        helm upgrade --install {release} {chart}{ver_flag}{ns}{create_ns}{wait_flag}{hctx} -f /tmp/opensible-k8s/values-{slugify(release, 'release')}.yaml",
+            "      environment:",
+            "        PATH: \"/usr/local/bin:/usr/local/sbin:/usr/bin:/usr/sbin:/bin:/sbin\"",
+            "        KUBECONFIG: \"{{ resolved_kubeconfig.stdout }}\"",
             "      register: helm_out",
             "    - name: Show helm output",
             "      ansible.builtin.debug:",
             "        var: helm_out.stdout_lines",
         ]
+
 
     elif action == "install-tools":
         method = values.get("install_method") or "binary"

@@ -1,0 +1,11 @@
+id: cis-hardening
+name: Linux CIS Hardening
+group: security
+description: Apply CIS Level 1 benchmark to Ubuntu / RHEL hosts.
+logo: https://cdn.simpleicons.org/linux/FCC624
+tags:
+  - cis
+  - hardening
+stars: 28
+available: false
+entrypoint: playbook.yml

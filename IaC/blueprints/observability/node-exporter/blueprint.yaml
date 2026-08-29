@@ -1,20 +1,25 @@
 id: node-exporter
 name: Prometheus node_exporter
 group: observability
-category: Metrics
 description: >-
-  Install prometheus-node-exporter on every selected host from distro
-  packages (Debian/Ubuntu + RHEL/Rocky/Alma via EPEL). Exposes host
-  metrics on :9100/metrics with the textfile collector enabled.
+  Install prometheus-node-exporter on every selected host from distro packages (Debian/Ubuntu + RHEL/Rocky/Alma via
+  EPEL). Exposes host metrics on :9100/metrics with the textfile collector enabled.
 logo: https://cdn.simpleicons.org/prometheus/E6522C
-tags: [prometheus, node-exporter, metrics, systemd]
+tags:
+  - prometheus
+  - node-exporter
+  - metrics
+  - systemd
 author: opensible
 stars: 29
+available: true
 templateId: node-exporter
+filenameStem: node-exporter
 entrypoint: playbook.yml
-variables:
+defaults:
   cluster_id: opensible-node-exporter
-  listen_address: "0.0.0.0:9100"
+  listen_address: 0.0.0.0:9100
   textfile_dir: /var/lib/node_exporter/textfile_collector
   open_firewall: true
   become: true
+category: Metrics

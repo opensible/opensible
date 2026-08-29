@@ -1,0 +1,11 @@
+id: kube-prometheus
+name: kube-prometheus-stack
+group: observability
+description: Prometheus, Alertmanager and Grafana via Helm with default dashboards.
+logo: https://cdn.simpleicons.org/prometheus/E6522C
+tags:
+  - prometheus
+  - grafana
+stars: 145
+available: false
+entrypoint: playbook.yml

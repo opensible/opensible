@@ -21,6 +21,7 @@ from . import nginx_reverse_proxy as _nginx_rp
 from . import k3s_bootstrap as _k3s
 from . import k8s_cluster as _k8s_cluster
 from . import k8s_manifests as _k8s_manifests
+from . import k8s_uninstall as _k8s_uninstall
 from . import system_update as _sysupd
 from . import docker_engine as _dockereng
 from . import manage_users as _manage_users
@@ -54,6 +55,7 @@ _REGISTRY: Dict[str, Any] = {
         _k3s,
         _k8s_cluster,
         _k8s_manifests,
+        _k8s_uninstall,
         _sysupd,
         _dockereng,
         _manage_users,

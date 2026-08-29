@@ -1,0 +1,11 @@
+id: ingress-nginx
+name: ingress-nginx + cert-manager
+group: kubernetes
+description: Production ingress with TLS via Let's Encrypt DNS-01.
+logo: https://cdn.simpleicons.org/nginx/009639
+tags:
+  - ingress
+  - tls
+stars: 54
+available: false
+entrypoint: playbook.yml

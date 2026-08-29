@@ -1,0 +1,17 @@
+id: nginx-reverse-proxy
+name: NGINX Reverse Proxy
+group: docker
+description: >-
+  Install NGINX from distro packages and render a hardened reverse-proxy vhost with optional TLS, HTTP→HTTPS redirect
+  and upstream health checks.
+logo: https://cdn.simpleicons.org/nginx/009639
+tags:
+  - nginx
+  - reverse-proxy
+  - tls
+author: opensible
+stars: 47
+available: true
+templateId: nginx-reverse-proxy
+filenameStem: nginx-reverse-proxy
+entrypoint: playbook.yml

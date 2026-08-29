@@ -1,6 +1,6 @@
 import { Link, useLocation } from "@tanstack/react-router";
 import {
-  Cloud, PieChart, Layers, Plus, Settings2, Server, Shield, KeyRound, BookOpen, ScrollText, FileCode, ChevronsLeft, ChevronsRight, Home, ShieldCheck, Plug, Cpu, Users, Calculator, Rocket, LayoutTemplate, Library, Network, GitBranch, History, Github,
+  Cloud, PieChart, Layers, Plus, Settings2, Server, Shield, KeyRound, BookOpen, ScrollText, FileCode, ChevronsLeft, ChevronsRight, Home, ShieldCheck, Plug, Cpu, Users, Calculator, Rocket, Hexagon, Library, Network, GitBranch, History, Github,
 } from "lucide-react";
 import logoSvg from "@/assets/opensible-logo.png";
 import { useT } from "@/lib/i18n";
@@ -26,6 +26,7 @@ export function AppSidebar() {
   const infra: Item[] = [
     { to: "/infrastructure/deployment", label: t("nav.deployment"), icon: Rocket },
     { to: "/infrastructure/templates", label: t("nav.jobsTemplates"), icon: Library },
+    { to: "/infrastructure/blueprints", label: t("nav.stackHubBlueprints"), icon: Hexagon },
     { to: "/infrastructure/hosts", label: t("nav.hosts"), icon: Network },
     { to: "/infrastructure/playbooks-roles", label: t("nav.playbooksRoles"), icon: BookOpen },
     { to: "/infrastructure/vaults-secrets", label: t("nav.vaultsSecrets"), icon: ShieldCheck },

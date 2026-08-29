@@ -18,6 +18,7 @@ import { WorkerSelect } from "@/components/infrastructure/WorkerSelect";
 import { PlaybookStageGraph } from "@/components/infrastructure/PlaybookStageGraph";
 
 import { api } from "@/lib/api";
+import { resolveInventoryFiles } from "@/lib/inventory-files";
 
 type Search = { id?: string; path?: string };
 
@@ -209,10 +210,11 @@ function JobDetail() {
     if (!pbId || !inst) return;
     setPendingStage(stage);
     try {
+      const inventoryFiles = await resolveInventoryFiles();
       const res = await api<{ executionId?: string; execution_id?: string }>(
         "POST", `/api/projects/_current/playbooks/${encodeURIComponent(pbId)}/run`,
         {
-          inventory_files: ["inventory.yml"],
+          inventory_files: inventoryFiles,
           ansible_config: "ansible.cfg",
           play_name: `[${stage}] ${inst.filename}`,
           become: true,

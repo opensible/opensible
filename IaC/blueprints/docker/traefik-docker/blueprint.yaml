@@ -1,0 +1,193 @@
+id: traefik-proxy-docker
+name: Traefik Reverse Proxy (Docker provider)
+group: docker
+description: >-
+  Traefik v3 on systemd with the Docker provider enabled — auto-discovers containers on the host's Docker socket via
+  `traefik.enable=true` labels, exposes the protected dashboard, Prometheus metrics and optional Let's Encrypt ACME.
+  Deploy as a single node or as an HA cluster with a keepalived VRRP virtual IP.
+logo: https://cdn.simpleicons.org/traefikproxy/24A1C1
+tags:
+  - traefik
+  - reverse-proxy
+  - docker
+  - tls
+  - systemd
+author: opensible
+stars: 63
+source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/networking/traefik
+available: true
+templateId: traefik-proxy
+filenameStem: traefik-proxy-docker
+entrypoint: ../../networking/traefik/playbook.yml
+requires:
+  ansible: '>=2.14'
+defaults:
+  cluster_id: opensible-traefik-docker
+  deploy_mode: single
+  traefik_version: 3.2.1
+  http_port: 80
+  https_enabled: true
+  https_port: 443
+  http_to_https_redirect: true
+  dashboard_enabled: true
+  dashboard_port: 8080
+  dashboard_user: admin
+  dashboard_password: ''
+  docker_provider: true
+  docker_expose_by_default: false
+  file_provider_dir: /etc/traefik/dynamic
+  acme_enabled: false
+  acme_email: ''
+  acme_staging: false
+  access_log_enabled: true
+  metrics_enabled: true
+  keepalived_enabled: false
+  vrrp_vip: ''
+  vrrp_interface: eth0
+  vrrp_router_id: 52
+  vrrp_password: ''
+  open_firewall: true
+  become: true
+formSchema:
+  - key: cluster_id
+    label: Deployment name
+    type: text
+    default: opensible-traefik-docker
+    group: Basics
+    help: Used for filenames, config comments and derived secrets.
+  - key: deploy_mode
+    label: Deployment mode
+    type: select
+    default: single
+    group: Basics
+    options:
+      - value: single
+        label: Single node
+      - value: cluster
+        label: HA / Cluster (keepalived VRRP VIP)
+  - key: traefik_version
+    label: Traefik version
+    type: text
+    default: 3.2.1
+    group: Basics
+  - key: docker_provider
+    label: Enable Docker provider
+    type: bool
+    default: true
+    group: Docker
+    help: Watches /var/run/docker.sock; the run fails early if Docker is not installed.
+  - key: docker_expose_by_default
+    label: Docker exposedByDefault
+    type: bool
+    default: false
+    group: Docker
+    help: Off = only containers labelled traefik.enable=true are routed.
+  - key: file_provider_dir
+    label: File provider directory
+    type: text
+    default: /etc/traefik/dynamic
+    group: Docker
+  - key: http_port
+    label: HTTP entrypoint port (web)
+    type: number
+    default: 80
+    group: Entrypoints
+  - key: https_enabled
+    label: Enable HTTPS entrypoint (websecure)
+    type: bool
+    default: true
+    group: Entrypoints
+  - key: https_port
+    label: HTTPS entrypoint port
+    type: number
+    default: 443
+    group: Entrypoints
+  - key: http_to_https_redirect
+    label: Redirect HTTP to HTTPS
+    type: bool
+    default: true
+    group: Entrypoints
+  - key: dashboard_enabled
+    label: Enable dashboard
+    type: bool
+    default: true
+    group: Dashboard
+  - key: dashboard_port
+    label: Dashboard / API / metrics port
+    type: number
+    default: 8080
+    group: Dashboard
+  - key: dashboard_user
+    label: Dashboard basic-auth user
+    type: text
+    default: admin
+    group: Dashboard
+  - key: dashboard_password
+    label: Dashboard basic-auth password
+    type: text
+    default: ''
+    group: Dashboard
+    help: Leave blank to derive a stable password from the deployment name (printed in the run summary).
+  - key: acme_enabled
+    label: Enable Let's Encrypt (HTTP-01)
+    type: bool
+    default: false
+    group: TLS / ACME
+    help: Port 80 must be reachable from the internet for the challenge to succeed.
+  - key: acme_email
+    label: ACME contact email
+    type: text
+    default: ''
+    group: TLS / ACME
+  - key: acme_staging
+    label: Use ACME staging
+    type: bool
+    default: false
+    group: TLS / ACME
+  - key: keepalived_enabled
+    label: Install keepalived (VRRP VIP)
+    type: bool
+    default: false
+    group: HA / Cluster
+  - key: vrrp_vip
+    label: Virtual IP (CIDR)
+    type: text
+    default: ''
+    placeholder: 10.0.0.100/24
+    group: HA / Cluster
+  - key: vrrp_interface
+    label: VRRP network interface
+    type: text
+    default: eth0
+    group: HA / Cluster
+  - key: vrrp_router_id
+    label: VRRP router id (1-255)
+    type: number
+    default: 52
+    group: HA / Cluster
+  - key: vrrp_password
+    label: VRRP auth password
+    type: text
+    default: ''
+    group: HA / Cluster
+  - key: access_log_enabled
+    label: Enable access log
+    type: bool
+    default: true
+    group: Ops
+  - key: metrics_enabled
+    label: Expose Prometheus metrics
+    type: bool
+    default: true
+    group: Ops
+  - key: open_firewall
+    label: Open ports in UFW / firewalld
+    type: bool
+    default: true
+    group: Ops
+  - key: become
+    label: Run as sudo (become)
+    type: bool
+    default: true
+    group: Ops
+category: Reverse Proxy

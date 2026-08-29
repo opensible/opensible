@@ -1,0 +1,33 @@
+---
+# Example overrides for the Traefik Reverse Proxy / LB blueprint.
+# Usage: ansible-playbook -i inventories/opensible.yml playbook.yml -e @vars.example.yml
+
+cluster_id: opensible-traefik
+traefik_version: 3.2.1
+
+# Entrypoints
+http_port: 80
+https_enabled: true
+https_port: 443
+http_to_https_redirect: true
+
+# Dashboard (basic auth, exposed on the traefik entrypoint)
+dashboard_enabled: true
+dashboard_port: 8080
+dashboard_user: admin
+dashboard_password: "replace-me"
+
+# Providers
+docker_provider: false            # true = watch containers with traefik.enable=true
+docker_expose_by_default: false
+file_provider_dir: /etc/traefik/dynamic
+
+# Let's Encrypt (HTTP-01, port 80 must be reachable from the internet)
+acme_enabled: false
+acme_email: ops@example.com
+acme_staging: false
+
+# Ops
+access_log_enabled: true
+metrics_enabled: true
+open_firewall: true

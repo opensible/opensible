@@ -1,15 +1,44 @@
 id: cicd-git-build-deploy
 name: CI/CD Pipeline (Git → Build → Push → Deploy)
 group: cicd
-category: CI/CD
 description: >-
-  End-to-end container CI/CD from a Git repo (GitHub / GitLab / Gitea /
-  Forgejo) to any OCI registry (Harbor, Sonatype Nexus, Zot, Docker Hub,
-  GHCR, GitLab Registry). Builds with docker buildx, pushes tagged images,
-  and can optionally SSH into a target host to roll the container using
-  docker run or docker compose up -d.
+  Clone a Git repo (GitHub / GitLab / Gitea / Forgejo), build a container image with docker buildx, push to any OCI
+  registry (Harbor, Sonatype Nexus, Zot, Docker Hub, GHCR, GitLab), and optionally deploy to a target host via docker or
+  docker compose.
 logo: https://cdn.simpleicons.org/githubactions/2088FF
-tags: [cicd, docker, git, registry, harbor, nexus, zot, deploy]
+tags:
+  - cicd
+  - docker
+  - git
+  - registry
+  - deploy
 author: opensible
 stars: 12
+available: true
+templateId: cicd-pipeline
+filenameStem: cicd-pipeline
 entrypoint: playbook.yml
+defaults:
+  git_repo_url: ''
+  git_ref: main
+  dockerfile_path: Dockerfile
+  build_context: .
+  platforms: linux/amd64
+  registry_url: ''
+  registry_type: harbor
+  registry_username: ''
+  registry_password: ''
+  registry_insecure: false
+  image_repository: ''
+  image_tag: latest
+  also_tag_git_sha: true
+  deploy_enabled: false
+  deploy_target_host: ''
+  deploy_mode: docker-run
+  container_name: app
+  container_ports: ''
+  container_env: ''
+  compose_file_path: /opt/app/docker-compose.yml
+  workdir: /var/lib/opensible/cicd
+  become: true
+category: CI/CD

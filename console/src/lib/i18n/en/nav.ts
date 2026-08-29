@@ -6,6 +6,7 @@ export const nav: Record<string, string> = {
   "nav.homeDashboard": "Home Dashboard",
   "nav.deployment": "Execution History",
   "nav.jobsTemplates": "Stack & Deployment",
+  "nav.stackHubBlueprints": "Stack Hub Blueprints",
   "nav.hosts": "Hosts & Groups",
   "nav.roles": "Roles",
   "nav.playbooks": "Playbooks",

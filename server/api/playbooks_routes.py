@@ -1,10 +1,4 @@
 """Playbook API routes blueprint.
-
-Moved from ``backend/app.py`` during the phased refactor. URLs, methods,
-view-function names, response shapes, and auth decorators are preserved
-verbatim. All references to app.py globals (playbook_storage, load_projects,
-list_executions, etc.) are resolved lazily through ``_LazyProxy`` so this
-module can be imported before app.py finishes initializing.
 """
 from __future__ import annotations
 
@@ -230,6 +224,7 @@ _APP_NAMES = (
     "PlaybookScheduler",
     "get_project_dir",
     "get_project_inventory_file",
+    "resolve_inventory_file_path",
     "get_project_generated_playbook_path",
     "load_execution_settings",
     "resolve_ansible_config_path",
@@ -818,6 +813,13 @@ def api_run_playbook(project_id, playbook_id):
                 else:
                     inv_path = repo_dir / inv_file
             
+            if not inv_path.exists():
+                try:
+                    _alt_inv = resolve_inventory_file_path(project_id, inv_file, must_exist=True)
+                except Exception:
+                    _alt_inv = None
+                if _alt_inv:
+                    inv_path = _alt_inv
             if inv_path.exists():
                 inventory_paths.append(str(inv_path.resolve()))
             else:
@@ -892,6 +894,13 @@ def api_run_playbook(project_id, playbook_id):
                         else:
                             inv_path = repo_dir / inv_file
                     
+                    if not inv_path.exists():
+                        try:
+                            _alt_inv = resolve_inventory_file_path(project_id, inv_file, must_exist=True)
+                        except Exception:
+                            _alt_inv = None
+                        if _alt_inv:
+                            inv_path = _alt_inv
                     if inv_path.exists():
                         inv_files_list.append(str(inv_path))
                 

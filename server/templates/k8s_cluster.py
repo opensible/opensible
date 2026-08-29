@@ -281,6 +281,22 @@ def _validate_values(values: Dict[str, Any]) -> None:
             _add_error(errors, "control_plane_endpoint", "must use host:port syntax")
         else:
             _validate_port(errors, "control_plane_endpoint", port_text)
+            try:
+                cp_nodes = _norm_nodes(values.get("control_planes"),
+                                       values.get("ssh_user_default") or "root",
+                                       values.get("ssh_port_default") or 22)
+            except Exception:
+                cp_nodes = []
+            if len(cp_nodes) > 1:
+                other_ips = {n["ip"] for n in cp_nodes[1:]}
+                if host in other_ips:
+                    _add_error(
+                        errors, "control_plane_endpoint",
+                        "must be a VIP / load-balancer address (or the first control-plane IP). "
+                        f"{host} belongs to another control-plane node, so kubeadm init would wait "
+                        "forever for an API server that is not running there yet.",
+                    )
+
 
     _validate_nodes(errors, values)
     if errors:
@@ -564,6 +580,19 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     parts.append("      register: active_swaps")
     parts.append("      changed_when: false")
     parts.append("      failed_when: active_swaps.stdout | trim != ''")
+    parts.append("    - name: Keep swap off across reboots (mask swap units and zram)")
+    parts.append("      ansible.builtin.shell: |")
+    parts.append("        systemctl --no-block mask swap.target 2>/dev/null || true")
+    parts.append("        for unit in $(systemctl list-unit-files --type=swap --no-legend 2>/dev/null | awk '{print $1}'); do")
+    parts.append("          systemctl mask \"$unit\" 2>/dev/null || true")
+    parts.append("        done")
+    parts.append("        if systemctl list-unit-files 2>/dev/null | grep -q '^systemd-zram-setup@'; then")
+    parts.append("          systemctl disable --now 'systemd-zram-setup@zram0.service' 2>/dev/null || true")
+    parts.append("          systemctl mask 'systemd-zram-setup@zram0.service' 2>/dev/null || true")
+    parts.append("        fi")
+    parts.append("      args: {executable: /bin/bash}")
+    parts.append("      changed_when: false")
+    parts.append("      failed_when: false")
     parts.append("    - name: Install Kubernetes node prerequisite packages (Debian/Ubuntu)")
     parts.append("      ansible.builtin.apt:")
     parts.append("        name: [apt-transport-https, ca-certificates, curl, gnupg, containerd, conntrack, ipset, iptables, ebtables, ethtool, socat, kmod, coreutils, util-linux]")
@@ -799,8 +828,45 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
     parts.append("        content: |")
     parts.append("          KUBELET_EXTRA_ARGS=--node-ip={{ inventory_hostname }} --hostname-override={{ k8s_node_name }}")
     parts.append("      notify: restart kubelet")
-    parts.append("    - name: Enable kubelet")
-    parts.append("      ansible.builtin.systemd: {name: kubelet, enabled: true, state: started}")
+    parts.append("    - name: Ensure systemd drop-in directories exist")
+    parts.append("      ansible.builtin.file:")
+    parts.append("        path: '{{ item }}'")
+    parts.append("        state: directory")
+    parts.append("        mode: '0755'")
+    parts.append("      loop:")
+    parts.append("        - /etc/systemd/system/kubelet.service.d")
+    parts.append("        - /etc/systemd/system/containerd.service.d")
+    parts.append("    - name: Ensure kubelet survives reboots (ordering + restart policy)")
+    parts.append("      ansible.builtin.copy:")
+    parts.append("        dest: /etc/systemd/system/kubelet.service.d/20-opensible-boot.conf")
+    parts.append("        mode: '0644'")
+    parts.append("        content: |")
+    parts.append("          [Unit]")
+    parts.append("          After=network-online.target containerd.service")
+    parts.append("          Wants=network-online.target containerd.service")
+    parts.append("          [Service]")
+    parts.append("          Restart=always")
+    parts.append("          RestartSec=10")
+    parts.append("          [Install]")
+    parts.append("          WantedBy=multi-user.target")
+    parts.append("      notify: restart kubelet")
+    parts.append("    - name: Ensure containerd restarts automatically on failure")
+    parts.append("      ansible.builtin.copy:")
+    parts.append("        dest: /etc/systemd/system/containerd.service.d/20-opensible-boot.conf")
+    parts.append("        mode: '0644'")
+    parts.append("        content: |")
+    parts.append("          [Unit]")
+    parts.append("          After=network-online.target")
+    parts.append("          Wants=network-online.target")
+    parts.append("          [Service]")
+    parts.append("          Restart=always")
+    parts.append("          RestartSec=5")
+    parts.append("      notify: restart containerd")
+    parts.append("    - name: Reload systemd after boot drop-ins")
+    parts.append("      ansible.builtin.systemd: {daemon_reload: true}")
+    parts.append("    - name: Enable containerd and kubelet at boot")
+    parts.append("      ansible.builtin.systemd: {name: '{{ item }}', enabled: true, state: started}")
+    parts.append("      loop: [containerd, kubelet]")
     if storage == "longhorn":
         parts.append("    - name: Longhorn prerequisites (open-iscsi, nfs-common) [Debian/Ubuntu]")
         parts.append("      ansible.builtin.apt:")
@@ -886,7 +952,25 @@ def render(values: Dict[str, Any], targets: Dict[str, Any]) -> str:
         init_cmd_parts.append("--upload-certs")
     if kube_proxy_mode == "none":
         init_cmd_parts.append("--skip-phases=addon/kube-proxy")
+    if ha_mode and effective_cp_endpoint:
+        _ep_host = effective_cp_endpoint.split(":", 1)[0]
+        if re.fullmatch(r"\d{1,3}(?:\.\d{1,3}){3}", _ep_host) and _ep_host != first_cp_ip:
+            parts.append("    - name: Verify control-plane endpoint VIP is present on this node")
+            parts.append("      ansible.builtin.shell: ip -o addr show | awk '{print $4}' | cut -d/ -f1")
+            parts.append("      register: cp_local_addrs")
+            parts.append("      changed_when: false")
+            parts.append("      when: not admin_conf.stat.exists")
+            parts.append("    - name: Stop when the control-plane endpoint is not reachable locally")
+            parts.append("      ansible.builtin.fail:")
+            parts.append(
+                "        msg: 'Control-plane endpoint " + _ep_host + " is not bound to this node. "
+                "kubeadm init would wait forever for the API server on that address. Provide a VIP "
+                "hosted on the first control-plane node (keepalived), a DNS name for your load balancer, "
+                "or leave the endpoint empty to use the first control-plane IP.'"
+            )
+            parts.append("      when: not admin_conf.stat.exists and '" + _ep_host + "' not in (cp_local_addrs.stdout_lines | default([]))")
     parts.append("    - name: kubeadm init")
+
     parts.append("      ansible.builtin.shell: >-")
     parts.append("        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin " + " ".join(init_cmd_parts))
     parts.append("      when: not admin_conf.stat.exists")

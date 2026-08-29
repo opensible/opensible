@@ -6,6 +6,7 @@ import {
   Maximize2, Minimize2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { resolveInventoryFiles } from "@/lib/inventory-files";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +14,8 @@ import { YamlEditor } from "@/components/ui/yaml-editor";
 import { api, ApiError } from "@/lib/api";
 import { TemplateInstanceHistoryDialog } from "./TemplateInstanceHistoryDialog";
 import { WorkerSelect } from "./WorkerSelect";
+import { useProjects } from "@/lib/project";
+
 
 type TemplateVariable = {
   name: string; label: string;
@@ -131,10 +134,12 @@ export function TemplateDialog({
       return d;
     },
   });
+  const { currentId } = useProjects();
   const groupsQ = useQuery({
-    queryKey: ["inventory-groups"],
+    queryKey: ["inventory-groups", currentId],
     queryFn: () => api<GroupsResp>("GET", "/api/inventory/groups"),
   });
+
 
   const detail = detailQ.data;
   const groupsMap = groupsQ.data?.groups || {};
@@ -277,10 +282,11 @@ export function TemplateDialog({
       );
 
       const pbId = saved.playbook_id || saved.filename.replace(/\.ya?ml$/i, "");
+      const inventoryFiles = await resolveInventoryFiles();
       const run = await api<{ executionId?: string; execution_id?: string }>(
         "POST", `/api/projects/_current/playbooks/${encodeURIComponent(pbId)}/run`,
         {
-          inventory_files: ["inventory.yml"],
+          inventory_files: inventoryFiles,
           ansible_config: "ansible.cfg",
           limit: [...groups, ...hosts].join(":") || undefined,
           play_name: `Template: ${detail?.name}${environment !== "default" ? ` [${environment}]` : ""}`,

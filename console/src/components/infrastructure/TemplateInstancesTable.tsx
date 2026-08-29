@@ -16,6 +16,7 @@ import { Badge, statusToVariant } from "@/components/ui/badge";
 import { TemplateDialog } from "./TemplateDialog";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { api } from "@/lib/api";
+import { resolveInventoryFiles } from "@/lib/inventory-files";
 
 type Instance = {
   path: string;
@@ -291,10 +292,11 @@ export function TemplateInstancesTable({
       } catch (e) { toast.error((e as Error).message); return; }
     }
     try {
+      const inventoryFiles = await resolveInventoryFiles();
       const res = await api<{ executionId?: string; execution_id?: string }>(
         "POST", `/api/projects/_current/playbooks/${encodeURIComponent(pbId!)}/run`,
         {
-          inventory_files: ["inventory.yml"],
+          inventory_files: inventoryFiles,
           ansible_config: "ansible.cfg",
           play_name: `Template instance: ${inst.filename}`,
           become: true, strategy: "linear",

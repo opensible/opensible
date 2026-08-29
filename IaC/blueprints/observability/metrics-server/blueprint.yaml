@@ -1,26 +1,33 @@
 id: metrics-server
 name: Prometheus / VictoriaMetrics
 group: observability
-category: Metrics
 description: >-
-  Single-node metrics backend on systemd (no Docker). Choose Prometheus
-  (with a rendered scrape config for your node_exporter targets) or
-  VictoriaMetrics (drop-in Prometheus API, lower RAM, better compression).
+  Single-node metrics backend on systemd (no Docker). Choose Prometheus (with a rendered scrape config for your
+  node_exporter targets) or VictoriaMetrics (drop-in Prometheus API, lower RAM and better compression).
 logo: https://cdn.simpleicons.org/victoriametrics/621773
-tags: [prometheus, victoriametrics, metrics, systemd]
+tags:
+  - prometheus
+  - victoriametrics
+  - metrics
+  - systemd
 author: opensible
 stars: 37
+available: true
 templateId: metrics-server
+filenameStem: metrics-server
 entrypoint: playbook.yml
-variables:
+defaults:
   cluster_id: opensible-metrics
   backend: victoriametrics
-  vm_version: "1.145.0"
-  prometheus_version: "2.55.1"
+  vm_version: 1.145.0
+  prometheus_version: 2.55.1
   listen_port: 8428
-  retention: "90d"
+  retention: 90d
   data_dir: /srv/metrics
-  scrape_interval: "15s"
-  node_exporter_targets: ""
+  scrape_interval: 15s
+  node_exporter_targets: |
+    # - 10.0.0.10:9100
+    # - 10.0.0.11:9100
   open_firewall: true
   become: true
+category: Metrics

@@ -1,0 +1,10 @@
+id: mysql-group
+name: MySQL Group Replication
+group: databases
+description: MySQL 8 group replication with ProxySQL routing.
+logo: https://cdn.simpleicons.org/mysql/4479A1
+tags:
+  - mysql
+stars: 33
+available: false
+entrypoint: playbook.yml

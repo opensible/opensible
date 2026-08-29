@@ -1,0 +1,16 @@
+id: docker-compose
+name: Docker Compose Stack
+group: docker
+description: >-
+  Render a docker-compose.yml on target hosts and run `docker compose up -d`. Ships with the compose plugin, per-host
+  env files and idempotent restart handling.
+logo: https://cdn.simpleicons.org/docker/2496ED
+tags:
+  - docker
+  - compose
+author: opensible
+stars: 54
+available: true
+templateId: docker-compose
+filenameStem: docker-compose
+entrypoint: playbook.yml

@@ -1,12 +1,22 @@
 id: uninstall-kafka
 name: Uninstall — Kafka (KRaft)
+group: uninstall
+description: Stop kafka.service, remove /opt/kafka, wipe /var/lib/kafka data + logs, drop the kafka system user and unit file.
+logo: https://cdn.simpleicons.org/apachekafka/231F20
+tags:
+  - cleanup
+  - kafka
+  - kraft
+author: opensible
+stars: 7
+available: true
 templateId: uninstall-stack
-description: >-
-  Stop kafka.service, remove /opt/kafka, wipe /var/lib/kafka data + logs,
-  drop the kafka system user and unit file.
+filenameStem: uninstall-kafka
+entrypoint: playbook.yml
 defaults:
   stack: kafka
   purge_data: true
   remove_packages: false
   flush_iptables: false
   reboot_after: false
+  become: true

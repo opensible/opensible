@@ -1,21 +1,26 @@
 id: k8s-kubeadm-ha
 name: Kubernetes HA (kubeadm)
 group: kubernetes
-category: Kubernetes
-description: Single or multi-control-plane kubeadm cluster with validated IPv4 networking and optional add-ons.
+description: Multi control-plane kubeadm cluster with Calico CNI and metrics-server.
 logo: https://cdn.simpleicons.org/kubernetes/326CE5
-tags: [kubeadm, HA, calico]
+tags:
+  - kubeadm
+  - HA
+  - calico
 author: opensible
 stars: 128
 source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/kubernetes/kubernetes-ha-kubeadm
-requires:
-  ansible: ">=2.14"
+available: true
+templateId: k8s-cluster
+filenameStem: kubernetes-ha-kubeadm
 entrypoint: playbook.yml
-variables:
+requires:
+  ansible: '>=2.14'
+defaults:
   cluster_name: opensible
+  kubernetes_version: 1.30.4
   ha_mode: false
-  control_plane_endpoint: ""
-  kubernetes_version: "1.30.4"
+  control_plane_endpoint: ''
   pod_cidr: 10.244.0.0/16
   service_cidr: 10.96.0.0/12
   cni_plugin: calico
@@ -24,3 +29,11 @@ variables:
   install_metrics_server: true
   storage_provisioner: none
   reset_existing_cluster: false
+  ssh_port_default: 22
+  control_planes:
+    - name: cp-1
+      ip: 10.0.0.10
+  workers:
+    - name: worker-1
+      ip: 10.0.0.20
+category: Kubernetes

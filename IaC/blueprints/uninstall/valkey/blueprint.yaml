@@ -1,12 +1,24 @@
 id: uninstall-valkey
 name: Uninstall — Valkey + Sentinel
-templateId: uninstall-stack
+group: uninstall
 description: >-
-  Stop valkey-server and valkey-sentinel, purge packages, remove /etc/valkey,
-  /var/lib/valkey, /var/log/valkey and the valkey system user.
+  Stop valkey-server and valkey-sentinel, purge packages, remove /etc/valkey, /var/lib/valkey, /var/log/valkey and the
+  valkey system user.
+logo: https://raw.githubusercontent.com/valkey-io/valkey/unstable/BRANDING/valkey-logomark.svg
+tags:
+  - cleanup
+  - valkey
+  - sentinel
+author: opensible
+stars: 4
+available: true
+templateId: uninstall-stack
+filenameStem: uninstall-valkey
+entrypoint: playbook.yml
 defaults:
   stack: valkey
   purge_data: true
   remove_packages: true
   flush_iptables: false
   reboot_after: false
+  become: true

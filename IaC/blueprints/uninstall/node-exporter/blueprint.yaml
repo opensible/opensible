@@ -1,9 +1,18 @@
 id: uninstall-node-exporter
 name: Uninstall — Prometheus node_exporter
+group: uninstall
+description: Stop prometheus-node-exporter, remove the systemd drop-in and purge the distro package.
+logo: https://cdn.simpleicons.org/prometheus/E6522C
+tags:
+  - cleanup
+  - node-exporter
+  - metrics
+author: opensible
+stars: 3
+available: true
 templateId: uninstall-stack
-description: >-
-  Stop prometheus-node-exporter, remove the systemd drop-in and purge
-  the distro package.
+filenameStem: uninstall-node-exporter
+entrypoint: playbook.yml
 defaults:
   stack: node-exporter
   purge_data: true

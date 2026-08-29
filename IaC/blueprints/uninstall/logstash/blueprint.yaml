@@ -1,13 +1,25 @@
 id: uninstall-logstash
 name: Uninstall — Logstash (Docker cluster)
-templateId: uninstall-stack
+group: uninstall
 description: >-
-  Stop logstash-docker.service on every node, remove the Logstash container
-  and image, delete /etc/logstash, /var/lib/logstash and the per-node health
-  dashboard unit.
+  Stop logstash-docker.service on every node, remove the Logstash container and image, delete /etc/logstash,
+  /var/lib/logstash and the per-node health dashboard unit.
+logo: https://cdn.simpleicons.org/logstash/005571
+tags:
+  - cleanup
+  - logstash
+  - elastic
+  - docker
+author: opensible
+stars: 3
+available: true
+templateId: uninstall-stack
+filenameStem: uninstall-logstash
+entrypoint: playbook.yml
 defaults:
   stack: logstash
   purge_data: true
   remove_packages: true
   flush_iptables: false
   reboot_after: false
+  become: true

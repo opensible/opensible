@@ -1,0 +1,55 @@
+id: linkerd-control-plane
+name: Linkerd Service Mesh
+group: kubernetes
+description: >-
+  Ultralight service mesh (Rust data plane). Deploys the linkerd-control-plane Helm chart into the linkerd namespace.
+  Requires linkerd-crds + trust anchor first — see the values.yaml comment for a one-liner.
+logo: https://cdn.simpleicons.org/linkerd/2BEDA6
+tags:
+  - service-mesh
+  - linkerd
+  - helm
+  - k8s
+author: opensible
+stars: 62
+available: true
+templateId: k8s-manifests
+filenameStem: linkerd-service-mesh
+entrypoint: playbook.yml
+defaults:
+  action: helm
+  helm_release: linkerd-control-plane
+  helm_chart: linkerd/linkerd-control-plane
+  helm_repo_name: linkerd
+  helm_repo_url: https://helm.linkerd.io/stable
+  helm_version: ''
+  namespace: linkerd
+  create_namespace: true
+  helm_wait: true
+  kubeconfig: ''
+  helm_values: >
+    # Prerequisite (run once on a control-plane node):
+
+    #   helm install linkerd-crds linkerd/linkerd-crds -n linkerd --create-namespace
+
+    #   step certificate create root.linkerd.cluster.local ca.crt ca.key --profile root-ca --no-password --insecure
+
+    #   step certificate create identity.linkerd.cluster.local issuer.crt issuer.key --profile intermediate-ca
+    --not-after 8760h --no-password --insecure --ca ca.crt --ca-key ca.key
+
+    # then pass --set-file identityTrustAnchorsPEM=ca.crt --set-file identity.issuer.tls.crtPEM=issuer.crt --set-file
+    identity.issuer.tls.keyPEM=issuer.key
+
+    identity:
+      issuer:
+        scheme: kubernetes.io/tls
+    proxy:
+      resources:
+        cpu:
+          request: 100m
+        memory:
+          request: 20Mi
+    controllerReplicas: 1
+
+    policyController:
+      logLevel: info

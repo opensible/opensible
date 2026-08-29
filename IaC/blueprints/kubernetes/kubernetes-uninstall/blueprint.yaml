@@ -1,0 +1,33 @@
+id: k8s-uninstall
+name: Uninstall — Kubernetes (kubeadm / k3s)
+group: uninstall
+description: >-
+  Completely remove a kubeadm or k3s cluster from selected nodes. Auto-detects the cluster type, drains, resets, removes
+  packages, deletes etcd/CNI data, flushes iptables and cleans images.
+logo: https://cdn.simpleicons.org/kubernetes/326CE5
+tags:
+  - cleanup
+  - kubeadm
+  - k3s
+  - kubernetes
+author: opensible
+stars: 42
+source: https://github.com/opensible/opensible/tree/main/IaC/blueprints/kubernetes/kubernetes-uninstall
+available: true
+templateId: k8s-uninstall
+filenameStem: kubernetes-uninstall
+entrypoint: playbook.yml
+requires:
+  ansible: '>=2.14'
+defaults:
+  cluster_name: opensible
+  cluster_type: auto
+  confirm_purge: false
+  drain_nodes: true
+  remove_packages: true
+  remove_containerd: true
+  remove_etcd_data: true
+  remove_cni: true
+  remove_images: false
+  remove_kubeconfig: true
+category: Kubernetes

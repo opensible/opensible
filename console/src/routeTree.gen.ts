@@ -29,6 +29,7 @@ import { Route as InfrastructurePlaybooksRouteImport } from './routes/infrastruc
 import { Route as InfrastructureJobRouteImport } from './routes/infrastructure/job'
 import { Route as InfrastructureHostsRouteImport } from './routes/infrastructure/hosts'
 import { Route as InfrastructureDeploymentRouteImport } from './routes/infrastructure/deployment'
+import { Route as InfrastructureBlueprintsRouteImport } from './routes/infrastructure/blueprints'
 import { Route as CloudSummaryRouteImport } from './routes/cloud/summary'
 import { Route as CloudSettingsRouteImport } from './routes/cloud/settings'
 import { Route as CloudCostRouteImport } from './routes/cloud/cost'
@@ -148,6 +149,12 @@ const InfrastructureDeploymentRoute =
     path: '/infrastructure/deployment',
     getParentRoute: () => rootRouteImport,
   } as any)
+const InfrastructureBlueprintsRoute =
+  InfrastructureBlueprintsRouteImport.update({
+    id: '/infrastructure/blueprints',
+    path: '/infrastructure/blueprints',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const CloudSummaryRoute = CloudSummaryRouteImport.update({
   id: '/cloud/summary',
   path: '/cloud/summary',
@@ -235,6 +242,7 @@ export interface FileRoutesByFullPath {
   '/cloud/cost': typeof CloudCostRoute
   '/cloud/settings': typeof CloudSettingsRoute
   '/cloud/summary': typeof CloudSummaryRoute
+  '/infrastructure/blueprints': typeof InfrastructureBlueprintsRoute
   '/infrastructure/deployment': typeof InfrastructureDeploymentRoute
   '/infrastructure/hosts': typeof InfrastructureHostsRoute
   '/infrastructure/job': typeof InfrastructureJobRoute
@@ -272,6 +280,7 @@ export interface FileRoutesByTo {
   '/cloud/cost': typeof CloudCostRoute
   '/cloud/settings': typeof CloudSettingsRoute
   '/cloud/summary': typeof CloudSummaryRoute
+  '/infrastructure/blueprints': typeof InfrastructureBlueprintsRoute
   '/infrastructure/deployment': typeof InfrastructureDeploymentRoute
   '/infrastructure/hosts': typeof InfrastructureHostsRoute
   '/infrastructure/job': typeof InfrastructureJobRoute
@@ -310,6 +319,7 @@ export interface FileRoutesById {
   '/cloud/cost': typeof CloudCostRoute
   '/cloud/settings': typeof CloudSettingsRoute
   '/cloud/summary': typeof CloudSummaryRoute
+  '/infrastructure/blueprints': typeof InfrastructureBlueprintsRoute
   '/infrastructure/deployment': typeof InfrastructureDeploymentRoute
   '/infrastructure/hosts': typeof InfrastructureHostsRoute
   '/infrastructure/job': typeof InfrastructureJobRoute
@@ -349,6 +359,7 @@ export interface FileRouteTypes {
     | '/cloud/cost'
     | '/cloud/settings'
     | '/cloud/summary'
+    | '/infrastructure/blueprints'
     | '/infrastructure/deployment'
     | '/infrastructure/hosts'
     | '/infrastructure/job'
@@ -386,6 +397,7 @@ export interface FileRouteTypes {
     | '/cloud/cost'
     | '/cloud/settings'
     | '/cloud/summary'
+    | '/infrastructure/blueprints'
     | '/infrastructure/deployment'
     | '/infrastructure/hosts'
     | '/infrastructure/job'
@@ -423,6 +435,7 @@ export interface FileRouteTypes {
     | '/cloud/cost'
     | '/cloud/settings'
     | '/cloud/summary'
+    | '/infrastructure/blueprints'
     | '/infrastructure/deployment'
     | '/infrastructure/hosts'
     | '/infrastructure/job'
@@ -461,6 +474,7 @@ export interface RootRouteChildren {
   CloudCostRoute: typeof CloudCostRoute
   CloudSettingsRoute: typeof CloudSettingsRoute
   CloudSummaryRoute: typeof CloudSummaryRoute
+  InfrastructureBlueprintsRoute: typeof InfrastructureBlueprintsRoute
   InfrastructureDeploymentRoute: typeof InfrastructureDeploymentRoute
   InfrastructureHostsRoute: typeof InfrastructureHostsRoute
   InfrastructureJobRoute: typeof InfrastructureJobRoute
@@ -623,6 +637,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InfrastructureDeploymentRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/infrastructure/blueprints': {
+      id: '/infrastructure/blueprints'
+      path: '/infrastructure/blueprints'
+      fullPath: '/infrastructure/blueprints'
+      preLoaderRoute: typeof InfrastructureBlueprintsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/cloud/summary': {
       id: '/cloud/summary'
       path: '/cloud/summary'
@@ -768,6 +789,7 @@ const rootRouteChildren: RootRouteChildren = {
   CloudCostRoute: CloudCostRoute,
   CloudSettingsRoute: CloudSettingsRoute,
   CloudSummaryRoute: CloudSummaryRoute,
+  InfrastructureBlueprintsRoute: InfrastructureBlueprintsRoute,
   InfrastructureDeploymentRoute: InfrastructureDeploymentRoute,
   InfrastructureHostsRoute: InfrastructureHostsRoute,
   InfrastructureJobRoute: InfrastructureJobRoute,
