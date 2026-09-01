@@ -51,7 +51,7 @@ WORKDIR /app
     COPY IaC /app/IaC
     
     # The Go worker binary.
-    COPY --from=build /out/worker /usr/local/bin/worker
+    COPY --from=build /out/worker /usr/local/bin/opensible-worker
     
     RUN mkdir -p /app/data
     ENV WORKER_SERVER_URL=http://backend:5000

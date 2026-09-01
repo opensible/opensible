@@ -1,0 +1,50 @@
+.git/
+.gitignore
+.github/
+
+# Dependency and build output trees
+node_modules/
+**/node_modules/
+console/dist/
+dist/
+.lovable/
+
+# Python build/test artifacts
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.eggs/
+.pytest_cache/
+**/.pytest_cache/
+.coverage
+htmlcov/
+venv/
+.venv/
+**/.venv/
+
+# Local secrets and state
+.env
+.env.*
+!.env.example
+.token
+*.log
+cosign.key
+ssh-keys/
+
+# Editor / OS noise
+.DS_Store
+**/.DS_Store
+*:Zone.Identifier
+*.Zone.Identifier
+
+# NOTE: do NOT add a blanket `*.md` rule. IaC/**/envs/_template/README.md is listed
+# in _TEMPLATE_OWNED_FILES (server/services/cloud_provisioning.py) and is copied into
+# every stack workspace by _sync_iac_assets at runtime, so those files must ship.
+# Top-level project docs are excluded individually instead.
+/README.md
+/CONTRIBUTING.md
+/CODE_OF_CONDUCT.md
+/GOVERNANCE.md
+/SECURITY.md
