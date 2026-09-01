@@ -94,6 +94,23 @@ The wiki is organized into categories. Read them in order the first time.
 - [First login and admin setup](https://docs.opensible.com/opensiblev1/5-first-login-and-admin) - Initial steps to access the OpenSible console.
 - [Help](https://docs.opensible.com/opensiblev1/3-community-and-support) - troubleshooting, FAQ, community, contributing, license.
 
+## OpenSible SBOM
+
+Software Bill of Materials (SBOM) for OpenSible container images.
+
+Generated in **SPDX JSON** format using [Syft](https://github.com/anchore/syft).
+
+### Example Release
+
+| Component | Version | SBOM |
+|---|---:|---|
+| Console | `0.1.13` | `opensible-console-0.1.13.spdx.json` |
+| Server | `0.1.9` | `opensible-server-0.1.9.spdx.json` |
+| Worker | `0.1.6` | `opensible-worker-0.1.6.spdx.json` |
+
+SBOMs provide supply-chain transparency and support vulnerability, dependency, and license analysis.
+
+> SBOMs are generated from the exact container images published for each release.
 
 ---
 
