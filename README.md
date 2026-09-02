@@ -122,12 +122,29 @@ SBOMs provide supply-chain transparency and support vulnerability, dependency, a
 - **Discussions**: [https://github.com/opensible/opensible/discussions](https://github.com/opensible/opensible/discussions)
 
 ---
+## Sponsors
 
+Thanks to our sponsors for supporting OpenSible! 
+
+<p align="left">
+  <img src="https://cdn.simpleicons.org/docker/2496ED" alt="Docker" width="90" />
+
+</p>
+
+## Contributors
+
+<p align="left">
+  <a href="https://github.com/opensible/opensible/graphs/contributors">
+    <img src="https://contrib.rocks/image?repo=opensible/opensible" alt="OpenSible contributors" />
+  </a>
+</p>
+
+---
 ## Contributing
 
 OpenSible is open source and community-driven. Whether you report bugs, propose features, write documentation or submit pull requests, your contribution shapes the roadmap.
 
-Read the [contributing guide](https://docs.opensible.com/opensiblev1/4-contributing) to get started.
+Read the [contributing guide](https://github.com/opensible/opensible/blob/main/CONTRIBUTING.md) to get started.
 
 ---
 
