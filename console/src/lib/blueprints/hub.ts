@@ -5,7 +5,7 @@ import type { Blueprint, BlueprintGroup, FormSchemaField } from "./types";
  */
 
 export const HUB_URL = (
-  (import.meta.env.VITE_STACK_HUB_URL as string | undefined) || "https://hub.opensible.com"
+  (import.meta.env.VITE_STACK_HUB_URL as string | undefined) || "https://registry.opensible.com"
 ).replace(/\/$/, "");
 
 type HubGroup = {
@@ -29,6 +29,7 @@ type HubBlueprint = {
   template_id?: string;
   filename_stem?: string;
   stars_count?: number;
+  installs_count?: number;
   latest_version_id?: string;
   expand?: {
     group?: HubGroup;
@@ -53,6 +54,31 @@ async function pbList<T>(path: string): Promise<T[]> {
   return json.items ?? [];
 }
 
+async function pbListAll<T>(path: string): Promise<T[]> {
+  const out: T[] = [];
+  for (let page = 1; page <= 20; page++) {
+    const res = await fetch(`${HUB_URL}${path}&page=${page}`, { headers: { accept: "application/json" } });
+    if (!res.ok) throw new Error(`Stack Hub request failed (${res.status})`);
+    const json = (await res.json()) as PbList<T> & { totalPages?: number };
+    out.push(...(json.items ?? []));
+    if (!json.totalPages || page >= json.totalPages) break;
+  }
+  return out;
+}
+
+async function tallyByBlueprint(collection: string): Promise<Record<string, number>> {
+  const rows = await pbListAll<{ blueprint?: string }>(
+    `/api/collections/${collection}/records?perPage=500&fields=blueprint`,
+  );
+  const counts: Record<string, number> = {};
+  for (const r of rows) {
+    if (!r.blueprint) continue;
+    counts[r.blueprint] = (counts[r.blueprint] ?? 0) + 1;
+  }
+  return counts;
+}
+
+
 function toBlueprint(
   bp: HubBlueprint,
   version: HubVersion | undefined,
@@ -65,6 +91,7 @@ function toBlueprint(
     tags: Array.isArray(bp.tags) ? bp.tags : [],
     author: bp.expand?.publisher?.slug,
     stars: bp.stars_count,
+    installs: bp.installs_count,
     source: bp.source || undefined,
     available: bp.available ?? false,
     templateId: bp.template_id || undefined,
@@ -116,4 +143,75 @@ export async function fetchHubBlueprintGroups(): Promise<BlueprintGroup[]> {
       blueprints: byGroup.get(g.slug) ?? [],
     }))
     .filter((g) => g.blueprints.length > 0);
+}
+
+/* ------------------------------------------------------------------ stats */
+
+export type HubStat = { id: string; slug: string; stars: number; installs: number };
+
+export async function fetchHubStats(): Promise<Record<string, HubStat>> {
+  const [rows, starCounts, installCounts] = await Promise.all([
+    pbListAll<HubBlueprint & { installs_count?: number }>(
+      "/api/collections/osble_blueprints/records?perPage=500&fields=id,slug,stars_count,installs_count&filter=" +
+        encodeURIComponent("(status='published' && visibility='public')"),
+    ),
+    tallyByBlueprint("osble_stars").catch(() => ({}) as Record<string, number>),
+    tallyByBlueprint("osble_installs").catch(() => ({}) as Record<string, number>),
+  ]);
+  const out: Record<string, HubStat> = {};
+  for (const r of rows) {
+    out[r.slug] = {
+      id: r.id,
+      slug: r.slug,
+      stars: Math.max(starCounts[r.id] ?? 0, r.stars_count ?? 0),
+      installs: Math.max(installCounts[r.id] ?? 0, r.installs_count ?? 0),
+    };
+  }
+  return out;
+}
+
+
+const INSTALL_ID_KEY = "opensible.install_id";
+
+function installId(): string {
+  try {
+    const existing = localStorage.getItem(INSTALL_ID_KEY);
+    if (existing) return existing;
+    const id = crypto.randomUUID();
+    localStorage.setItem(INSTALL_ID_KEY, id);
+    return id;
+  } catch {
+    return "anonymous";
+  }
+}
+
+/** Resolve a blueprint record id from its slug (installs need the relation id). */
+async function blueprintIdBySlug(slug: string): Promise<string | undefined> {
+  const rows = await pbList<{ id: string }>(
+    `/api/collections/osble_blueprints/records?perPage=1&fields=id&filter=${encodeURIComponent(`slug='${slug.replace(/'/g, "")}'`)}`,
+  );
+  return rows[0]?.id;
+}
+
+export async function recordHubInstall(
+  slug: string,
+  opts: { result?: "ok" | "failed"; blueprintId?: string; consoleVersion?: string } = {},
+): Promise<boolean> {
+  try {
+    const id = opts.blueprintId ?? (await blueprintIdBySlug(slug));
+    if (!id) return false;
+    const res = await fetch(`${HUB_URL}/api/collections/osble_installs/records`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        blueprint: id,
+        result: opts.result ?? "ok",
+        install_id: installId(),
+        console_version: opts.consoleVersion ?? "console/web",
+      }),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
 }
