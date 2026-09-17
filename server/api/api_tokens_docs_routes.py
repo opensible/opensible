@@ -10,9 +10,9 @@ import sys
 from flask import Blueprint, Response, current_app, jsonify, request
 
 try:
-    from auth.middleware import require_auth
+    from auth.middleware import is_admin_user, require_auth
 except ImportError:  # pragma: no cover
-    from ..auth.middleware import require_auth
+    from ..auth.middleware import is_admin_user, require_auth
 
 import utils.docs_access as _docs_access
 
@@ -29,11 +29,10 @@ def _app_logger():
 
 
 def _require_admin_user():
-    user = getattr(request, 'current_user', None) or {}
-    roles = user.get('roles') or []
-    if 'admin' in roles:
+    if is_admin_user():
         return True, None
     return False, (jsonify({'success': False, 'error': 'Admin role required'}), 403)
+
 
 
 # ---------------------------------------------------------------------------

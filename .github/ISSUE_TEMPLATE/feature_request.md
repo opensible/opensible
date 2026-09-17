@@ -2,8 +2,9 @@
 name: Feature request
 about: Suggest a new feature or improvement for OpenSible
 title: "[Feature] "
-labels: ["enhancement", "needs-triage"]
-assignees: []
+labels: enhancement
+assignees: ''
+
 ---
 
 ## Problem
@@ -20,9 +21,9 @@ assignees: []
 
 ## Scope
 
-- [ ] Backend (`backend/`)
-- [ ] Worker (`worker-go/`)
-- [ ] Frontend (`src/`)
+- [ ] Server (`backend/`)
+- [ ] Work (`worker-go/`)
+- [ ] Web Console (`src/`)
 - [ ] IaC blueprints (`IaC/`)
 - [ ] Documentation
 - [ ] Deployment / operations
