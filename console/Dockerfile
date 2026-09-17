@@ -2,6 +2,7 @@
 # Build context: repo root  (docker build -f console/Dockerfile .)
 
 # ---------- build stage ----------
+# oven/bun publishes no Alpine-version-suffixed tag; this is Alpine 3.22.5 today.
 FROM oven/bun:1 AS builder
 WORKDIR /app
 
@@ -19,10 +20,7 @@ COPY IaC/blueprints ./IaC/blueprints
 RUN bun run build
 
 # ---------- runtime stage ----------
-FROM nginx:alpine
-
-# envsubst for entrypoint
-RUN apk add --no-cache gettext
+FROM nginx:1.29-alpine-slim
 
 COPY console/nginx-docker.conf /etc/nginx/templates/default.conf.template
 COPY console/docker-entrypoint.sh /docker-entrypoint-frontend.sh

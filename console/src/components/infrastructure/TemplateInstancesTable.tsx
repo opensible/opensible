@@ -463,12 +463,6 @@ export function TemplateInstancesTable({
 
   return (
     <div className="space-y-4">
-      <div className="text-sm text-[var(--color-muted-foreground)]">
-        Every <span className="font-medium text-[var(--color-foreground)]">Save to repo</span> creates an instance here.
-        Click a row to open the job detail, or use the actions to edit, run, duplicate, or delete.
-      </div>
-
-
       {!listQ.isLoading && filteredRows.length === 0 && (
         <Card>
           <CardContent className="p-8 text-center text-sm text-[var(--color-muted-foreground)] flex flex-col items-center gap-2">

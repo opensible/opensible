@@ -58,9 +58,33 @@
       when: ansible_os_family == 'Debian'
     - name: Install prerequisites
       ansible.builtin.apt:
-        name: [ca-certificates, curl, gnupg, lsb-release]
+        name: [ca-certificates, curl, gnupg, lsb-release, iptables, kmod]
         state: present
         update_cache: true
+      when: ansible_os_family == 'Debian'
+    - name: Load overlay and br_netfilter kernel modules
+      ansible.builtin.modprobe:
+        name: "{{ item }}"
+        state: present
+      loop: [overlay, br_netfilter]
+      failed_when: false
+      when: ansible_os_family == 'Debian'
+    - name: Ensure /etc/docker exists
+      ansible.builtin.file:
+        path: /etc/docker
+        state: directory
+        mode: '0755'
+      when: ansible_os_family == 'Debian'
+    - name: Configure Docker daemon (log rotation, live-restore)
+      ansible.builtin.copy:
+        dest: /etc/docker/daemon.json
+        mode: '0644'
+        content: |
+          {
+            "live-restore": true,
+            "log-driver": "json-file",
+            "log-opts": { "max-size": "10m", "max-file": "3" }
+          }
       when: ansible_os_family == 'Debian'
     - name: Detect Debian package architecture for Docker repo
       ansible.builtin.command: dpkg --print-architecture
@@ -102,10 +126,51 @@
         update_cache: true
       when: ansible_os_family == 'Debian'
     - name: Enable and start docker
-      ansible.builtin.service:
-        name: docker
-        state: started
-        enabled: true
+      block:
+        - name: Reload systemd daemon
+          ansible.builtin.systemd:
+            daemon_reload: true
+        - name: Start and enable docker
+          ansible.builtin.service:
+            name: docker
+            state: started
+            enabled: true
+      rescue:
+        - name: Collect docker start failure logs
+          ansible.builtin.command: journalctl -u docker.service -n 50 --no-pager
+          register: docker_journal
+          changed_when: false
+          failed_when: false
+        - name: Show docker logs
+          ansible.builtin.debug:
+            var: docker_journal.stdout_lines
+        - name: Fallback — disable iptables integration (LXC/VPS kernels)
+          ansible.builtin.copy:
+            dest: /etc/docker/daemon.json
+            mode: '0644'
+            content: |
+              {
+                "live-restore": true,
+                "iptables": false,
+                "bridge": "none",
+                "log-driver": "json-file",
+                "log-opts": { "max-size": "10m", "max-file": "3" }
+              }
+        - name: Reload systemd daemon (fallback)
+          ansible.builtin.systemd:
+            daemon_reload: true
+        - name: Start and enable docker (fallback)
+          ansible.builtin.service:
+            name: docker
+            state: started
+            enabled: true
+    - name: Verify docker is running
+      ansible.builtin.command: docker info
+      register: docker_info
+      changed_when: false
+      retries: 10
+      delay: 3
+      until: docker_info.rc == 0
     - name: Add ubuntu to docker group
       ansible.builtin.user:
         name: ubuntu

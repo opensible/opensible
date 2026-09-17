@@ -1,22 +1,23 @@
 # Backend API (Flask)
-# Build context: project root (docker build -f backend/Dockerfile .)
-FROM python:3.14-slim
+# Build context: repo root  (docker build -f server/Dockerfile .)
+FROM python:3.14-alpine3.24
+
+# ansible-core comes from pip, not the distro package manager, so it runs on the image's
+# own interpreter instead of dragging in a second, distro-owned Python.
+ARG ANSIBLE_CORE_VERSION=2.21.3
 
 WORKDIR /app
 
-# Split OS packages into smaller layers so Zot behind Cloudflare does not reject uploads over ~100 MB.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    git \
-    openssh-client \
-    sshpass \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ansible-core \
-    && rm -rf /var/lib/apt/lists/*
+# Binaries the API shells out to:
+#   git      -> services/git_source_manager.py, api/templates_routes.py
+#   sshpass  -> api/ansible_run_routes.py, api/host_checks_routes.py (via shutil.which,
+#               so a missing binary degrades silently rather than erroring)
+#   ssh      -> ansible transport
+RUN apk add --no-cache git openssh-client sshpass ca-certificates
 
 COPY server/requirements.txt /app/requirements.txt
-RUN pip install --no-cache-dir -r /app/requirements.txt
+RUN pip install --no-cache-dir -r /app/requirements.txt \
+        "ansible-core==${ANSIBLE_CORE_VERSION}"
 
 COPY server /app
 

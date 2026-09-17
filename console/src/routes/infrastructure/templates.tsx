@@ -37,8 +37,6 @@ function IconFor({ name }: { name?: string }) {
   return <Ico className="h-5 w-5" />;
 }
 
-type Tab = "jobs";
-
 function TemplatesPage() {
   const t = useT();
   const qc = useQueryClient();
@@ -51,7 +49,6 @@ function TemplatesPage() {
     environment?: string;
     instancePath?: string;
   } | null>(null);
-  const [tab, setTab] = useState<Tab>("jobs");
   const [runLogId, setRunLogId] = useState<string | null>(null);
   const [catalogOpen, setCatalogOpen] = useState(false);
 
@@ -89,12 +86,10 @@ function TemplatesPage() {
           <p className="text-sm text-[var(--color-muted-foreground)]">{t("page.templates.subtitle")}</p>
         </div>
         <div className="flex items-center gap-2">
-          {tab === "jobs" && (
-            <div className="relative">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-muted-foreground)]" />
-              <Input value={instSearch} onChange={(e) => setInstSearch(e.target.value)} placeholder={t("templates.searchJobs")} className="pl-7 h-8 w-56" />
-            </div>
-          )}
+          <div className="relative">
+            <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-[var(--color-muted-foreground)]" />
+            <Input value={instSearch} onChange={(e) => setInstSearch(e.target.value)} placeholder={t("templates.searchJobs")} className="pl-7 h-8 w-56" />
+          </div>
           <Button variant="outline" size="sm" onClick={() => {
             listQ.refetch();
             qc.invalidateQueries({ queryKey: ["template-instances"] });
@@ -107,31 +102,9 @@ function TemplatesPage() {
         </div>
       </div>
 
-      <div className="flex items-center gap-1 border-b border-[var(--color-border)]">
-        {([
-          ["jobs", t("templates.tab.jobs")],
-        ] as const).map(([id, label]) => (
-          <button
-            key={id}
-            onClick={() => setTab(id as Tab)}
-            className={`px-3 py-1.5 text-sm border-b-2 -mb-px transition-colors ${
-              tab === id
-                ? "border-[var(--color-primary)] text-[var(--color-foreground)] font-medium"
-                : "border-transparent text-[var(--color-muted-foreground)] hover:text-[var(--color-foreground)]"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
+      <div className="border-b border-[var(--color-border)]" />
 
-      <p className="text-xs text-[var(--color-muted-foreground)]">
-        {t("templates.tab.jobs.desc")}
-      </p>
-
-      {tab === "jobs" && (
-        <TemplateInstancesTable filterText={instSearch} onRunLog={(id) => setRunLogId(id)} />
-      )}
+      <TemplateInstancesTable filterText={instSearch} onRunLog={(id) => setRunLogId(id)} />
 
       {catalogOpen && (
         <>
