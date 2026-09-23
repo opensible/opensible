@@ -8,6 +8,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import yaml
 from flask import jsonify, request
 
 POLICY_RULE_TYPES = {
@@ -265,6 +266,28 @@ def latest_policy_result(ex_dir: Path, name: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+def _parse_policy_body() -> Optional[Dict[str, Any]]:
+    """Accept the policy config as JSON or YAML (PyYAML, the project default).
+
+    Explicit `application/json` bodies are parsed as JSON only; anything else
+    is parsed as YAML — which also accepts JSON, since JSON is a YAML subset.
+    Returns None when the body is missing, not an object, or invalid.
+    """
+    ctype = (request.content_type or "").split(";")[0].strip().lower()
+    if ctype == "application/json":
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return None
+        return data
+    try:
+        data = yaml.safe_load(request.get_data(as_text=True) or "{}")
+    except yaml.YAMLError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data
+
+
 def register_policy_routes(
     bp,
     *,
@@ -297,11 +320,18 @@ def register_policy_routes(
     @bp.route("/stacks/<name>/policy", methods=["PUT"])
     @require_auth
     def policy_set(name):
-        """Enable/disable and configure the policy gate for one stack."""
+        """Enable/disable and configure the policy gate for one stack.
+
+        The body is accepted as JSON or YAML; a `Content-Type` of
+        `application/json` forces JSON parsing, otherwise the body is parsed
+        as YAML (JSON is a valid YAML subset).
+        """
         pid = get_project_id()
         if not valid_name(name) or not stack_dir(pid, name).exists():
             return jsonify({"error": "Not found"}), 404
-        body = request.get_json(silent=True) or {}
+        body = _parse_policy_body()
+        if body is None:
+            return jsonify({"error": "Invalid body: expected a JSON or YAML object."}), 400
         patch: Dict[str, Any] = {}
         if "enabled" in body:
             enabled = body.get("enabled")
