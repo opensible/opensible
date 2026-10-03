@@ -229,9 +229,13 @@ def list_audit(
     data_dir: Path,
     *,
     limit: int = 100,
+    offset: int = 0,
     target_type: Optional[str] = None,
     target_id: Optional[str] = None,
     actor_user_id: Optional[str] = None,
+    action: Optional[str] = None,
+    since: Optional[str] = None,
+    until: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     conn = _open(data_dir)
     sql = "SELECT id, actor_user_id, action, target_type, target_id, meta_json, created_at FROM audit_log"
@@ -246,10 +250,20 @@ def list_audit(
     if actor_user_id:
         where.append("actor_user_id = ?")
         args.append(actor_user_id)
+    if action:
+        where.append("action = ?")
+        args.append(action)
+    if since:
+        where.append("created_at >= ?")
+        args.append(since)
+    if until:
+        where.append("created_at <= ?")
+        args.append(until)
     if where:
         sql += " WHERE " + " AND ".join(where)
-    sql += " ORDER BY id DESC LIMIT ?"
+    sql += " ORDER BY id DESC LIMIT ? OFFSET ?"
     args.append(int(limit))
+    args.append(max(0, int(offset)))
     rows = conn.execute(sql, args).fetchall()
     out: List[Dict[str, Any]] = []
     for r in rows:
@@ -271,6 +285,64 @@ def list_audit(
             }
         )
     return out
+
+
+def get_audit_by_id(data_dir: Path, entry_id: int) -> Optional[Dict[str, Any]]:
+    conn = _open(data_dir)
+    row = conn.execute(
+        "SELECT id, actor_user_id, action, target_type, target_id, meta_json, created_at "
+        "FROM audit_log WHERE id = ?",
+        (entry_id,),
+    ).fetchone()
+    if not row:
+        return None
+    meta = None
+    if row["meta_json"]:
+        try:
+            meta = json.loads(row["meta_json"])
+        except Exception:
+            meta = None
+    return {
+        "id": row["id"],
+        "actor_user_id": row["actor_user_id"],
+        "action": row["action"],
+        "target_type": row["target_type"],
+        "target_id": row["target_id"],
+        "meta": meta,
+        "created_at": row["created_at"],
+    }
+
+
+def get_audit_summary(data_dir: Path) -> Dict[str, Any]:
+    conn = _open(data_dir)
+    total_count = conn.execute("SELECT COUNT(*) FROM audit_log").fetchone()[0]
+
+    action_rows = conn.execute(
+        "SELECT action, COUNT(*) as cnt FROM audit_log GROUP BY action ORDER BY cnt DESC"
+    ).fetchall()
+    actions_breakdown = {r["action"]: r["cnt"] for r in action_rows}
+
+    target_rows = conn.execute(
+        "SELECT target_type, COUNT(*) as cnt FROM audit_log WHERE target_type IS NOT NULL GROUP BY target_type ORDER BY cnt DESC"
+    ).fetchall()
+    target_types_breakdown = {r["target_type"]: r["cnt"] for r in target_rows}
+
+    actor_count = conn.execute(
+        "SELECT COUNT(DISTINCT actor_user_id) FROM audit_log WHERE actor_user_id IS NOT NULL"
+    ).fetchone()[0]
+
+    last_entry = conn.execute(
+        "SELECT created_at FROM audit_log ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+
+    return {
+        "total_entries": total_count,
+        "actions": actions_breakdown,
+        "target_types": target_types_breakdown,
+        "unique_actors": actor_count,
+        "last_activity_at": last_entry["created_at"] if last_entry else None,
+    }
+
 
 
 # ---------------------------------------------------------------------------

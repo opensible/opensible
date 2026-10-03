@@ -280,3 +280,42 @@ def require_all_roles(*role_names: str):
             return f(*args, **kwargs)
         return decorated_function
     return decorator
+
+
+def is_admin_user() -> bool:
+    """Verify if request.current_user has administrative privileges or is an internal caller."""
+    user = getattr(request, 'current_user', None) or {}
+    user_id = user.get('user_id')
+    if user_id == '__internal__':
+        return True
+    roles = user.get('roles', [])
+    if isinstance(roles, list):
+        if any(str(r).lower() == 'admin' for r in roles):
+            return True
+    if user_id:
+        try:
+            acs = get_access_control_service()
+            return (
+                acs.has_role(user_id, 'admin')
+                or acs.has_role(user_id, 'Admin')
+                or acs.has_permission(user_id, 'admin.all')
+            )
+        except Exception:
+            pass
+    return False
+
+
+def require_admin(f: Callable) -> Callable:
+    """Decorator to require admin role or internal caller privileges."""
+    @wraps(f)
+    @require_auth
+    def decorated_function(*args, **kwargs):
+        if not is_admin_user():
+            return jsonify({
+                'success': False,
+                'error': 'Permission denied',
+                'message': 'Admin role required',
+            }), 403
+        return f(*args, **kwargs)
+    return decorated_function
+

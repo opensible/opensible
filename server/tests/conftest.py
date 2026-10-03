@@ -40,6 +40,7 @@ def data_dir(tmp_path, monkeypatch):
     (tmp_path / "workers").mkdir(parents=True, exist_ok=True)
     (tmp_path / "projects").mkdir(parents=True, exist_ok=True)
 
+    import storage.auth_db as auth_db
     import storage.index_db as index_db
 
     if index_db._CONN is not None:
@@ -50,6 +51,16 @@ def data_dir(tmp_path, monkeypatch):
     index_db._CONN = None
     index_db._DB_PATH = None
     index_db._READY = False
+
+    auth_conn = getattr(auth_db._TLS, "conn", None)
+    if auth_conn is not None:
+        try:
+            auth_conn.close()
+        except Exception:
+            pass
+        auth_db._TLS.conn = None
+    auth_db._DB_PATH = None
+    auth_db._SCHEMA_READY = False
 
     yield tmp_path
 
@@ -62,6 +73,17 @@ def data_dir(tmp_path, monkeypatch):
     index_db._DB_PATH = None
     index_db._READY = False
 
+    auth_conn = getattr(auth_db._TLS, "conn", None)
+    if auth_conn is not None:
+        try:
+            auth_conn.close()
+        except Exception:
+            pass
+        auth_db._TLS.conn = None
+    auth_db._DB_PATH = None
+    auth_db._SCHEMA_READY = False
+
+
 
 @pytest.fixture
 def workers_env(data_dir, monkeypatch):
@@ -73,3 +95,15 @@ def workers_env(data_dir, monkeypatch):
     wr._TOKEN_CACHE.clear()
     wr._HEARTBEAT_WRITE_CACHE.clear()
     return wr
+
+
+@pytest.fixture
+def test_app(data_dir, monkeypatch):
+    """Create test Flask application with auth and API blueprints registered."""
+    import app as main_app_mod
+    monkeypatch.setattr(main_app_mod, "DATA_DIR", data_dir)
+    app = main_app_mod.app
+    app.config["TESTING"] = True
+    return app
+
+

@@ -11,7 +11,11 @@ import sys
 
 from flask import Blueprint, current_app, jsonify, request
 
-from auth.middleware import require_auth
+try:
+    from auth.middleware import is_admin_user, require_admin, require_auth
+except ImportError:  # pragma: no cover
+    from ..auth.middleware import is_admin_user, require_admin, require_auth
+
 from auth.validators import (
     validate_email,
     validate_password,
@@ -21,6 +25,11 @@ from auth.validators import (
 )
 
 bp = Blueprint("users_api", __name__)
+
+
+def _admin_forbidden():
+    return jsonify({"success": False, "error": "Permission denied", "message": "Admin role required"}), 403
+
 
 
 def _svc():
@@ -36,6 +45,8 @@ def _svc():
 @bp.route("/api/users", methods=["GET"])
 @require_auth
 def api_list_users():
+    if not is_admin_user():
+        return _admin_forbidden()
     user_service, role_service, _ = _svc()
     try:
         users = user_service.get_all_users()
@@ -58,6 +69,8 @@ def api_list_users():
 @bp.route("/api/users", methods=["POST"])
 @require_auth
 def api_create_user():
+    if not is_admin_user():
+        return _admin_forbidden()
     user_service, role_service, _ = _svc()
     try:
         data = request.json or {}
@@ -104,6 +117,9 @@ def api_create_user():
 @bp.route("/api/users/<user_id>", methods=["GET"])
 @require_auth
 def api_get_user(user_id):
+    current_user_id = (getattr(request, 'current_user', None) or {}).get("user_id")
+    if user_id != current_user_id and not is_admin_user():
+        return _admin_forbidden()
     user_service, role_service, _ = _svc()
     try:
         user = user_service.get_user_by_id(user_id)
@@ -127,17 +143,28 @@ def api_get_user(user_id):
 @bp.route("/api/users/<user_id>", methods=["PUT"])
 @require_auth
 def api_update_user(user_id):
+    current_user_id = (getattr(request, 'current_user', None) or {}).get("user_id")
+    is_admin = is_admin_user()
+    if user_id != current_user_id and not is_admin:
+        return _admin_forbidden()
+
+    data = request.json or {}
+    roles = data.get("roles")
+    is_active = data.get("is_active")
+    current_password = data.get("current_password")
+    new_password = data.get("password")
+
+    if not is_admin:
+        if roles is not None or is_active is not None:
+            return _admin_forbidden()
+        if new_password is not None and current_password is None:
+            return _admin_forbidden()
+
     user_service, role_service, _ = _svc()
     try:
-        data = request.json or {}
         username = (data.get("username") or "").strip() or None
         email = (data.get("email") or "").strip() or None
-        roles = data.get("roles")
-        is_active = data.get("is_active")
-        current_password = data.get("current_password")
-        new_password = data.get("password")
 
-        current_user_id = request.current_user.get("user_id")
         if current_password is not None and new_password is not None:
             if not new_password or len(new_password) < 6:
                 return jsonify({"success": False, "error": "New password must be at least 6 characters"}), 400
@@ -196,6 +223,8 @@ def api_update_user(user_id):
 @bp.route("/api/users/<user_id>", methods=["DELETE"])
 @require_auth
 def api_delete_user(user_id):
+    if not is_admin_user():
+        return _admin_forbidden()
     user_service, _, _ = _svc()
     try:
         current_user_id = request.current_user.get("user_id")
@@ -214,6 +243,8 @@ def api_delete_user(user_id):
 @bp.route("/api/users/<user_id>/roles", methods=["POST"])
 @require_auth
 def api_assign_roles_to_user(user_id):
+    if not is_admin_user():
+        return _admin_forbidden()
     user_service, role_service, _ = _svc()
     try:
         data = request.json or {}
@@ -241,6 +272,7 @@ def api_assign_roles_to_user(user_id):
     except Exception as e:
         current_app.logger.error(f"Error assigning roles to user: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Error assigning roles"}), 500
+
 
 
 # =========================== ROLES ===========================
@@ -277,6 +309,8 @@ def api_list_roles():
 @bp.route("/api/roles", methods=["POST"])
 @require_auth
 def api_create_role():
+    if not is_admin_user():
+        return _admin_forbidden()
     _, role_service, permission_service = _svc()
     try:
         data = request.json or {}
@@ -323,6 +357,8 @@ def api_get_role(role_id):
 @bp.route("/api/roles/<role_id>", methods=["PUT"])
 @require_auth
 def api_update_role(role_id):
+    if not is_admin_user():
+        return _admin_forbidden()
     _, role_service, permission_service = _svc()
     try:
         data = request.json or {}
@@ -356,6 +392,8 @@ def api_update_role(role_id):
 @bp.route("/api/roles/<role_id>", methods=["DELETE"])
 @require_auth
 def api_delete_role(role_id):
+    if not is_admin_user():
+        return _admin_forbidden()
     _, role_service, _ = _svc()
     try:
         deleted = role_service.delete_role(role_id)
@@ -385,6 +423,8 @@ def api_list_permissions():
 @bp.route("/api/permissions", methods=["POST"])
 @require_auth
 def api_create_permission():
+    if not is_admin_user():
+        return _admin_forbidden()
     _, _, permission_service = _svc()
     try:
         data = request.json or {}
@@ -430,6 +470,8 @@ def api_get_permission(perm_id):
 @bp.route("/api/permissions/<perm_id>", methods=["PUT"])
 @require_auth
 def api_update_permission(perm_id):
+    if not is_admin_user():
+        return _admin_forbidden()
     _, _, permission_service = _svc()
     try:
         data = request.json or {}
@@ -461,6 +503,8 @@ def api_update_permission(perm_id):
 @bp.route("/api/permissions/<perm_id>", methods=["DELETE"])
 @require_auth
 def api_delete_permission(perm_id):
+    if not is_admin_user():
+        return _admin_forbidden()
     _, _, permission_service = _svc()
     try:
         deleted = permission_service.delete_permission(perm_id)
@@ -471,6 +515,7 @@ def api_delete_permission(perm_id):
     except Exception as e:
         current_app.logger.error(f"Error deleting permission: {e}", exc_info=True)
         return jsonify({"success": False, "error": "Error deleting permission"}), 500
+
 
 
 @bp.route("/api/permissions/by-resource/<resource>", methods=["GET"])
