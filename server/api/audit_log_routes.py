@@ -13,7 +13,10 @@ import sys
 
 from flask import Blueprint, current_app, jsonify, request
 
-from auth.middleware import require_auth
+try:
+    from auth.middleware import require_admin, require_auth
+except ImportError:  # pragma: no cover
+    from ..auth.middleware import require_admin, require_auth
 
 try:
     from storage import auth_db
@@ -32,7 +35,7 @@ def _data_dir():
 
 
 @bp.route("/api/audit-log", methods=["GET"])
-@require_auth
+@require_admin
 def api_list_audit_log():
     data_dir = _data_dir()
     if not data_dir:
