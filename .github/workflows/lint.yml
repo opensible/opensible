@@ -1,0 +1,68 @@
+name: Lint
+
+# Advisory for now (continue-on-error) so existing code does not block PRs.
+# Remove continue-on-error per job once each component is clean.
+
+on:
+  pull_request:
+    branches: [develop, main]
+
+concurrency:
+  group: lint-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  server-ruff:
+    name: Server (ruff)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/ruff-action@v3
+        with:
+          src: server
+
+  worker-vet:
+    name: Worker (go vet + gofmt)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: worker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: worker/go.mod
+          cache-dependency-path: worker/go.sum
+      - run: go vet ./...
+      - run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+
+  console-lint:
+    name: Console (eslint)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    defaults:
+      run:
+        working-directory: console
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
+      - run: bun run lint --if-present || bunx eslint .
+
+  image-smoke:
+    name: Image build (smoke)
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [server, worker, console]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.component }}
+          file: ${{ matrix.component }}/Dockerfile
+          push: false
+          cache-from: type=gha,scope=${{ matrix.component }}
