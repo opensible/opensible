@@ -1,0 +1,121 @@
+name: Release images
+
+# Builds and publishes multi-arch images to Docker Hub when a component tag is pushed:
+#   v0.1.6-worker        -> docker.io/ossopensible/opensible-worker:0.1.6 (+ latest)
+#   v0.1.9-server        -> docker.io/ossopensible/opensible-server:0.1.9 (+ latest)
+#   web-console-0.1.14   -> docker.io/ossopensible/opensible-console:0.1.14 (+ latest)
+# Same image names, tags and Dockerfiles as scripts/release-images.sh, so existing
+# docker-compose.yml deployments keep pulling exactly as before.
+# Also runnable manually from the Actions tab.
+#
+# Required repo secrets: DOCKERHUB_USERNAME, DOCKERHUB_TOKEN (Docker Hub access token
+# with write access to the ossopensible namespace).
+
+on:
+  push:
+    tags:
+      - "v*-worker"
+      - "v*-server"
+      - "web-console-*"
+  workflow_dispatch:
+    inputs:
+      component:
+        description: "Component to release"
+        required: true
+        type: choice
+        options: [server, worker, console]
+      version:
+        description: "Version (e.g. 0.1.9)"
+        required: true
+        type: string
+      push_latest:
+        description: "Also move the :latest tag"
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+  id-token: write
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      component: ${{ steps.r.outputs.component }}
+      version: ${{ steps.r.outputs.version }}
+    steps:
+      - id: r
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            c="${{ inputs.component }}"; v="${{ inputs.version }}"
+          else
+            t="${GITHUB_REF_NAME}"
+            case "$t" in
+              web-console-*) c=console; v="${t#web-console-}" ;;
+              v*-worker)     c=worker;  v="${t#v}"; v="${v%-worker}" ;;
+              v*-server)     c=server;  v="${t#v}"; v="${v%-server}" ;;
+              *) echo "Unknown tag $t"; exit 1 ;;
+            esac
+          fi
+          [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]] || { echo "Bad version '$v'"; exit 1; }
+          echo "component=$c" >> "$GITHUB_OUTPUT"
+          echo "version=$v"   >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: resolve
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: docker.io/ossopensible/opensible-${{ needs.resolve.outputs.component }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: docker.io
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=${{ needs.resolve.outputs.version }}
+            type=raw,value=latest,enable=${{ github.event_name == 'push' || inputs.push_latest }}
+
+      - id: push
+        uses: docker/build-push-action@v6
+        with:
+          # Dockerfiles expect the repo root as build context (they COPY IaC/).
+          context: .
+          file: ${{ needs.resolve.outputs.component }}/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: true
+          sbom: true
+          cache-from: type=gha,scope=${{ needs.resolve.outputs.component }}
+          cache-to: type=gha,mode=max,scope=${{ needs.resolve.outputs.component }}
+
+      - uses: sigstore/cosign-installer@v3
+      - name: Sign image (keyless)
+        run: cosign sign --yes "${IMAGE}@${{ steps.push.outputs.digest }}"
+
+      - uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.push.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-${{ needs.resolve.outputs.component }}.spdx.json
+
+      - name: Draft GitHub release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: sbom-${{ needs.resolve.outputs.component }}.spdx.json
