@@ -18,6 +18,9 @@ from services.sources_service import validate_sources
     ("https:///user/repo.git", False),
     ("/srv/other-project/.git", False),
     ("../repo", False),
+    ("git@", False),
+    ("git@host", False),
+    ("git@/etc/passwd:x", False),
     ("localhost:repo", False),
 ])
 def test_is_valid_git_url(url, expected):

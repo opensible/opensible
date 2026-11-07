@@ -45,6 +45,8 @@ class GitSourceError(Exception):
 
 
 _ALLOWED_GIT_SCHEMES = {'https', 'http', 'ssh', 'git'}
+# git's scp-like syntax: no '/' before the first ':', otherwise git treats it as a local path.
+_SCP_GIT_URL_RE = _re_url.compile(r'git@[^/:]+:')
 _CREDS_IN_URL_RE = _re_url.compile(r'(https?://)([^/\s@]+)@', _re_url.IGNORECASE)
 
 
@@ -60,7 +62,7 @@ def is_valid_git_url(url: str) -> bool:
     parsed = urlparse(url)
     if parsed.scheme:
         return parsed.scheme.lower() in _ALLOWED_GIT_SCHEMES and bool(parsed.hostname)
-    return url.startswith('git@')
+    return bool(_SCP_GIT_URL_RE.match(url))
 
 
 def validate_git_repo_url(url: str) -> None:
