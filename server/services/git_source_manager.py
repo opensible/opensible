@@ -45,6 +45,9 @@ class GitSourceError(Exception):
 
 
 _ALLOWED_GIT_SCHEMES = {'https', 'http', 'ssh', 'git'}
+# git's scp-like syntax: no '/' before the first ':', otherwise git treats it as a local path.
+# git's bracketed git@[host:port]:path form is not supported, use ssh://host:port/path instead.
+_SCP_GIT_URL_RE = _re_url.compile(r'git@([^/:\[@]+):')
 _CREDS_IN_URL_RE = _re_url.compile(r'(https?://)([^/\s@]+)@', _re_url.IGNORECASE)
 
 
@@ -55,25 +58,32 @@ def _scrub_credentials(text: str) -> str:
     return _CREDS_IN_URL_RE.sub(r'\1***@', text)
 
 
+def is_valid_git_url(url: str) -> bool:
+    """True for ``<scheme>://host/...`` with an allowed scheme, or SCP-style ``git@host:path``."""
+    parsed = urlparse(url)
+    if parsed.scheme:
+        return parsed.scheme.lower() in _ALLOWED_GIT_SCHEMES and bool(parsed.hostname)
+    return bool(_SCP_GIT_URL_RE.match(url))
+
+
 def validate_git_repo_url(url: str) -> None:
     """Reject schemes/hosts that could enable SSRF or local-file disclosure.
 
-    Blocks ``file://``, loopback/private/link-local IPs, and the cloud metadata
-    endpoint (169.254.169.254). Hostnames that resolve to private IPs are
-    rejected too. Raises ``GitSourceError('GIT_INVALID_URL', ...)`` on failure.
+    Blocks ``file://``, local paths, loopback/link-local IPs, and the cloud metadata
+    endpoint (169.254.169.254). Hostnames that resolve to such IPs are rejected
+    too. Private networks are allowed for self-hosted Git servers.
+    Raises ``GitSourceError('GIT_INVALID_URL', ...)`` on failure.
     """
     if not url or not isinstance(url, str):
         raise GitSourceError('GIT_INVALID_URL', 'Repository URL is required')
-    # Reject SCP-style git@host:path only if it tries scheme tricks.
-    parsed = urlparse(url)
-    scheme = (parsed.scheme or '').lower()
-    if scheme and scheme not in _ALLOWED_GIT_SCHEMES:
-        raise GitSourceError('GIT_INVALID_URL', f'Disallowed URL scheme: {scheme}')
-    hostname = (parsed.hostname or '').strip()
-    if not hostname and scheme:
-        raise GitSourceError('GIT_INVALID_URL', 'Repository URL is missing a host')
-    if not hostname:
-        return  # SCP-style (git@host:path); host handled elsewhere
+    if not is_valid_git_url(url):
+        raise GitSourceError('GIT_INVALID_URL', 'Repository URL must be <scheme>://host/... '
+                             f'({", ".join(sorted(_ALLOWED_GIT_SCHEMES))}) or git@host:path')
+    scp = _SCP_GIT_URL_RE.match(url)
+    if scp:
+        hostname = scp.group(1).strip()
+    else:
+        hostname = (urlparse(url).hostname or '').strip()
     # Block obvious metadata hostnames.
     if hostname.lower() in ('metadata', 'metadata.google.internal'):
         raise GitSourceError('GIT_INVALID_URL', f'Host not allowed: {hostname}')
@@ -92,10 +102,10 @@ def validate_git_repo_url(url: str) -> None:
             # Let git surface the DNS error instead of failing here.
             return
     for addr in candidates:
-        if (addr.is_private or addr.is_loopback or addr.is_link_local
+        if (addr.is_loopback or addr.is_link_local
                 or addr.is_multicast or addr.is_reserved or addr.is_unspecified):
             raise GitSourceError('GIT_INVALID_URL',
-                                 f'Host resolves to a non-public address: {addr}')
+                                 f'Host resolves to a disallowed address: {addr}')
 
 
 class GitSourceManager:
