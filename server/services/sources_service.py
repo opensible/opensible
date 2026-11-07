@@ -9,6 +9,7 @@ import sys
 import time
 from pathlib import Path
 
+from services.git_source_manager import is_valid_git_url
 from utils.paths import validate_repo_layout_path
 from utils.project_paths import get_project_dir  # noqa: F401
 
@@ -208,7 +209,7 @@ def validate_sources(sources):
             if not isinstance(repo, str):
                 return False, 'INVALID_GIT_REPO', f'git.repo for {resource_type} must be a string'
             # URL
-            if not (repo.startswith('http://') or repo.startswith('https://') or repo.startswith('git@') or repo.startswith('git://')):
+            if not is_valid_git_url(repo):
                 return False, 'INVALID_GIT_REPO', f'git.repo for {resource_type} must be a valid Git URL'
             
             ref = git_config.get('ref')

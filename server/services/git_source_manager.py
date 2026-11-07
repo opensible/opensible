@@ -55,6 +55,14 @@ def _scrub_credentials(text: str) -> str:
     return _CREDS_IN_URL_RE.sub(r'\1***@', text)
 
 
+def is_valid_git_url(url: str) -> bool:
+    """True for ``<scheme>://host/...`` with an allowed scheme, or SCP-style ``git@host:path``."""
+    parsed = urlparse(url)
+    if parsed.scheme:
+        return parsed.scheme.lower() in _ALLOWED_GIT_SCHEMES and bool(parsed.hostname)
+    return url.startswith('git@')
+
+
 def validate_git_repo_url(url: str) -> None:
     """Reject schemes/hosts that could enable SSRF or local-file disclosure.
 
@@ -64,14 +72,10 @@ def validate_git_repo_url(url: str) -> None:
     """
     if not url or not isinstance(url, str):
         raise GitSourceError('GIT_INVALID_URL', 'Repository URL is required')
-    # Reject SCP-style git@host:path only if it tries scheme tricks.
-    parsed = urlparse(url)
-    scheme = (parsed.scheme or '').lower()
-    if scheme and scheme not in _ALLOWED_GIT_SCHEMES:
-        raise GitSourceError('GIT_INVALID_URL', f'Disallowed URL scheme: {scheme}')
-    hostname = (parsed.hostname or '').strip()
-    if not hostname and scheme:
-        raise GitSourceError('GIT_INVALID_URL', 'Repository URL is missing a host')
+    if not is_valid_git_url(url):
+        raise GitSourceError('GIT_INVALID_URL', 'Repository URL must be <scheme>://host/... '
+                             f'({", ".join(sorted(_ALLOWED_GIT_SCHEMES))}) or git@host:path')
+    hostname = (urlparse(url).hostname or '').strip()
     if not hostname:
         return  # SCP-style (git@host:path); host handled elsewhere
     # Block obvious metadata hostnames.
